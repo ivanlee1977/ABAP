@@ -1,0 +1,647 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO017F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_bsis      LIKE bsis OCCURS 0 WITH HEADER LINE,
+       lt_bsis_temp LIKE bsis OCCURS 0 WITH HEADER LINE.
+
+  DATA:lv_date LIKE sy-datum.
+  DATA:BEGIN OF lt_t001k OCCURS 0,
+         bwkey LIKE t001k-bwkey,
+         bukrs LIKE t001k-bukrs,
+       END OF lt_t001k.
+
+  DATA:lv_amount TYPE p DECIMALS 2.
+
+  DATA:BEGIN OF lt_mslb OCCURS 0.
+      INCLUDE STRUCTURE mslb.
+  DATA:bklas LIKE mbew-bklas,
+       END OF lt_mslb.
+
+  DATA:ls_data LIKE LINE OF gt_out.
+
+***获取期间的最后一天
+  CONCATENATE p_gjahr p_monat '01' INTO lv_date.
+  CALL FUNCTION 'FKK_LAST_DAY_OF_MONTH'
+    EXPORTING
+      day_in            = lv_date
+    IMPORTING
+      last_day_of_month = gv_date
+    EXCEPTIONS
+      day_in_no_date    = 1
+      OTHERS            = 2.
+
+***抓取满足条件的数据
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_bsis
+    FROM bsis
+   WHERE bukrs = p_bukrs
+     AND budat <= gv_date
+     AND ( hkont IN ('1401000000','1403000000','1402000000','1406000000','1499060000')
+        OR hkont BETWEEN '1499010000' AND '1499050000' ).
+
+***获取公司对应的工厂数据
+  SELECT bwkey bukrs INTO CORRESPONDING FIELDS OF TABLE lt_t001k FROM t001k WHERE bukrs = p_bukrs.
+  LOOP AT lt_t001k.
+    r_bwkey = 'IEQ'.
+    r_bwkey-low = lt_t001k-bwkey.
+    APPEND r_bwkey.
+    CLEAR r_bwkey.
+  ENDLOOP.
+
+***计算A部分数据
+  LOOP AT lt_bsis.
+    IF lt_bsis-shkzg = 'H'.
+      lt_bsis-dmbtr = -1 * lt_bsis-dmbtr.
+    ENDIF.
+***原材料
+    IF lt_bsis-hkont = '1401000000'.
+      ls_data-zexno = '01'.
+      ls_data-zamount  = lt_bsis-dmbtr.
+      ls_data-zamount1 = lt_bsis-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF lt_bsis-hkont = '1403000000'.
+      ls_data-zexno = '02'.
+      ls_data-zamount  = lt_bsis-dmbtr.
+      ls_data-zamount1 = lt_bsis-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF lt_bsis-hkont = '1402000000'.
+      ls_data-zexno = '03'.
+      ls_data-zamount = lt_bsis-dmbtr.
+      ls_data-zamount1 = lt_bsis-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF lt_bsis-hkont = '1406000000' OR lt_bsis-hkont = '1499060000'.
+      ls_data-zexno = '05'.
+      ls_data-zamount = lt_bsis-dmbtr.
+      ls_data-zamount1 = lt_bsis-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ENDIF.
+  ENDLOOP.
+
+  REFRESH:gt_bseg,gt_ckmlhd,gt_ckmlprkeph.
+
+  APPEND LINES OF lt_bsis TO lt_bsis_temp.
+***计算B部分数据
+  DELETE lt_bsis WHERE hkont NOT BETWEEN '1499010000' AND '1499050000'.
+  IF lt_t001k[] IS NOT INITIAL AND lt_bsis[] IS NOT INITIAL.
+    SELECT  a~bukrs
+            a~belnr
+            a~gjahr
+            a~buzei
+            a~dmbtr
+            a~shkzg
+            b~bklas
+            a~matnr
+            a~werks
+            a~hkont
+      INTO CORRESPONDING FIELDS OF TABLE gt_bseg
+      FROM bseg AS a
+      INNER JOIN mbew AS b
+      ON a~matnr = b~matnr
+      AND a~werks = b~bwkey
+      FOR ALL ENTRIES IN lt_bsis
+      WHERE a~werks IN r_bwkey
+        AND a~bukrs = lt_bsis-bukrs
+        AND a~belnr = lt_bsis-belnr
+        AND a~gjahr = lt_bsis-gjahr
+        AND a~buzei = lt_bsis-buzei.
+  ENDIF.
+
+  LOOP AT gt_bseg WHERE bklas = '3000' OR  bklas = '7920' OR bklas = '7900'.
+    IF gt_bseg-shkzg = 'H'.
+      gt_bseg-dmbtr = -1 * gt_bseg-dmbtr.
+    ENDIF.
+    IF gt_bseg-bklas = '3000'.
+      ls_data-zexno = '01'.
+      ls_data-zamount  = gt_bseg-dmbtr.
+      ls_data-zamount1 = gt_bseg-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF gt_bseg-bklas = '7920'.
+      ls_data-zexno = '02'.
+      ls_data-zamount  = gt_bseg-dmbtr.
+      ls_data-zamount1 = gt_bseg-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF gt_bseg-bklas = '7900'.
+      ls_data-zexno = '03'.
+      ls_data-zamount  = gt_bseg-dmbtr.
+      ls_data-zamount1 = gt_bseg-dmbtr.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ENDIF.
+  ENDLOOP.
+
+***获取MSLB数据，C部分委外加工数据
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_mslb
+    FROM mslb AS a
+   INNER JOIN mbew AS b
+      ON a~matnr = b~matnr
+     AND a~werks = b~bwkey
+   WHERE a~werks IN r_bwkey
+     AND a~lfgja = p_gjahr
+     AND a~lfmon = p_monat.
+  IF lt_mslb[] IS NOT INITIAL.
+    SELECT  a~kalnr
+            a~matnr
+            a~bwkey
+            b~bdatj
+            b~poper
+            b~pvprs
+            b~peinh
+      INTO CORRESPONDING FIELDS OF TABLE gt_ckmlhd
+      FROM ckmlhd AS a
+      INNER JOIN ckmlcr AS b
+      ON a~kalnr = b~kalnr
+      FOR ALL ENTRIES IN lt_mslb
+      WHERE a~bwkey = lt_mslb-werks
+        AND a~matnr = lt_mslb-matnr
+        AND b~bdatj = p_gjahr
+        AND b~poper = p_monat
+        AND b~curtp = '10'
+        AND b~vprsv = 'V'.
+  ENDIF.
+  IF gt_ckmlhd[] IS NOT INITIAL.
+    SELECT a~kalnr
+           a~bdatj
+           a~poper
+           a~kst012
+           b~losgr
+      INTO CORRESPONDING FIELDS OF TABLE gt_ckmlprkeph
+      FROM ckmlprkeph AS a
+      INNER JOIN ckmlprkeko AS b
+      ON a~kalnr = b~kalnr
+      AND a~bdatj = b~bdatj
+      AND a~poper = b~poper
+      AND a~untper = b~untper
+      FOR ALL ENTRIES IN gt_ckmlhd
+      WHERE a~kalnr = gt_ckmlhd-kalnr
+        AND a~bdatj = gt_ckmlhd-bdatj
+        AND a~poper = gt_ckmlhd-poper
+        AND a~kkzst = space.
+  ENDIF.
+
+  SORT gt_ckmlhd BY bwkey matnr.
+  LOOP AT lt_mslb.
+    CLEAR lv_amount.
+    READ TABLE gt_ckmlhd WITH KEY bwkey = lt_mslb-werks matnr = lt_mslb-matnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_amount = ( lt_mslb-lblab + lt_mslb-lbins + lt_mslb-lbvla + lt_mslb-lbvin ) * gt_ckmlhd-pvprs / gt_ckmlhd-peinh.
+    ENDIF.
+    ls_data-zexno = '04'.
+    ls_data-zamount  = lv_amount.
+    ls_data-zamount1 = lv_amount.
+    COLLECT ls_data INTO gt_out.
+    CLEAR ls_data.
+
+    IF lt_mslb-bklas = '3000'.
+      ls_data-zexno = '01'.
+      ls_data-zamount  = -1 * lv_amount.
+      ls_data-zamount1 = -1 * lv_amount.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF lt_mslb-bklas = '7920'.
+      ls_data-zexno = '02'.
+      ls_data-zamount = -1 * lv_amount.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF lt_mslb-bklas = '7900'.
+      ls_data-zexno = '03'.
+      ls_data-zamount  = -1 * lv_amount.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ENDIF.
+  ENDLOOP.
+
+***剔除委外物料的软件费用
+  SORT lt_mslb BY matnr werks.
+  DELETE ADJACENT DUPLICATES FROM lt_mslb COMPARING matnr werks.
+  LOOP AT lt_mslb.
+    CLEAR lv_amount.
+    READ TABLE gt_ckmlhd WITH KEY bwkey = lt_mslb-werks matnr = lt_mslb-matnr BINARY SEARCH.
+    CHECK sy-subrc = 0.
+    ls_data-zexno = '04'.
+    ls_data-zamount1 = lv_amount.
+    LOOP AT gt_ckmlprkeph WHERE kalnr = gt_ckmlhd-kalnr AND bdatj = gt_ckmlhd-bdatj AND poper = gt_ckmlhd-poper.
+      IF gt_ckmlprkeph-losgr NE 0.
+        ls_data-zamount1 = ls_data-zamount1 - gt_ckmlprkeph-kst012 * ( lt_mslb-lblab + lt_mslb-lbins + lt_mslb-lbvla + lt_mslb-lbvin ) / gt_ckmlprkeph-losgr.
+      ENDIF.
+    ENDLOOP.
+    COLLECT ls_data INTO gt_out.
+    CLEAR ls_data.
+    IF lt_mslb-bklas = '7920'.
+      ls_data-zexno = '02'.
+      LOOP AT gt_ckmlprkeph WHERE kalnr = gt_ckmlhd-kalnr AND bdatj = gt_ckmlhd-bdatj AND poper = gt_ckmlhd-poper.
+        IF gt_ckmlprkeph-losgr NE 0.
+          ls_data-zamount1 = ls_data-zamount1 + gt_ckmlprkeph-kst012 * ( lt_mslb-lblab + lt_mslb-lbins + lt_mslb-lbvla + lt_mslb-lbvin ) / gt_ckmlprkeph-losgr.
+        ENDIF.
+      ENDLOOP.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ELSEIF lt_mslb-bklas = '7900'.
+      ls_data-zexno = '03'.
+      LOOP AT gt_ckmlprkeph WHERE kalnr = gt_ckmlhd-kalnr AND bdatj = gt_ckmlhd-bdatj AND poper = gt_ckmlhd-poper.
+        IF gt_ckmlprkeph-losgr NE 0.
+          ls_data-zamount1 = ls_data-zamount1 + gt_ckmlprkeph-kst012 * ( lt_mslb-lblab + lt_mslb-lbins + lt_mslb-lbvla + lt_mslb-lbvin ) / gt_ckmlprkeph-losgr.
+        ENDIF.
+      ENDLOOP.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ENDIF.
+  ENDLOOP.
+
+***减去半成品本身的软件费用
+  DELETE lt_bsis_temp WHERE hkont NE '1403000000'AND hkont NE '1402000000'.
+  PERFORM frm_get_half_rjfy_data TABLES lt_bsis_temp.
+
+***存货中包含从集团内公司采购的存货明细
+  PERFORM frm_get_jtchmx_data.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  DATA:ls_key   TYPE wwwdatatab,
+       lv_subrc TYPE sy-subrc.
+  DATA lv_file LIKE rlgrap-filename.
+
+  CONCATENATE 'C:\CO\' sy-title '-'   sy-datum '.xls' INTO lv_file.
+
+  ls_key-relid = 'MI'.
+  ls_key-objid = gcst_excel_template.
+  CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'
+    EXPORTING
+      key         = ls_key
+      destination = lv_file
+    IMPORTING
+      rc          = lv_subrc.
+  IF lv_subrc <> 0.
+    MESSAGE '下载模板出错，请检查，谢谢' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+***填充EXCEL数据
+  PERFORM frm_filldata_excel USING lv_file.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FILLDATA_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_FILE  text
+*----------------------------------------------------------------------*
+FORM frm_filldata_excel  USING iv_file TYPE rlgrap-filename.
+*******数据定义*******
+  DATA:lo_excel     TYPE ole2_object,
+       lo_workbooks TYPE ole2_object,
+       lo_workbook  TYPE ole2_object,
+       lo_sheet     TYPE ole2_object,
+       lo_range     TYPE ole2_object,
+       lo_cell      TYPE ole2_object,
+       lo_cell1     TYPE ole2_object.
+  DATA lv_file LIKE rlgrap-filename.
+  DATA:lt_excel_in                    "内表：从源文件中读取到的数据
+         TYPE STANDARD TABLE OF alsmex_tabline WITH HEADER LINE.
+  DATA ls_out LIKE LINE OF gt_out.
+  DATA lv_value TYPE char200.
+
+  DATA lv_row TYPE i.
+  DATA lv_col TYPE i.
+
+  DEFINE mac_fill_cell.
+    CALL METHOD OF lo_sheet 'CELLS' = lo_cell
+      EXPORTING
+        #1 = &1
+        #2 = &2.
+    SET PROPERTY OF lo_cell 'VALUE' = &3.
+  END-OF-DEFINITION.
+
+  DATA:lv_butxt LIKE t001-butxt.
+
+*******程序主体*******
+*读取模板数据
+
+  lv_file = iv_file.
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = lv_file
+      i_begin_col             = 1
+      i_begin_row             = 1
+      i_end_col               = 10
+      i_end_row               = 70
+    TABLES
+      intern                  = lt_excel_in
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+
+*填充excel
+  CREATE OBJECT lo_excel 'EXCEL.APPLICATION'.
+  CALL METHOD OF lo_excel 'WORKBOOKS' = lo_workbooks.
+  CALL METHOD OF lo_workbooks 'OPEN' = lo_workbook EXPORTING #1 = iv_file.
+  CALL METHOD OF lo_workbook 'WORKSHEETS' = lo_sheet EXPORTING #1 = 1.
+
+***编制单位
+  SELECT SINGLE butxt INTO lv_butxt FROM t001 WHERE bukrs = p_bukrs.
+  CONCATENATE '编制单位:' lv_butxt INTO lv_value.
+  mac_fill_cell 2  1 lv_value.
+
+  CONCATENATE gv_date(4) '年' gv_date+4(2) '月' gv_date+6(2) '日' INTO lv_value.
+  mac_fill_cell 3  3 lv_value.
+  "数值
+  LOOP AT gt_out INTO ls_out.
+    lv_value = ls_out-zexno.
+    CONDENSE lv_value.
+    READ TABLE lt_excel_in WITH KEY value = lv_value.
+    IF sy-subrc EQ 0.
+      lv_row = lt_excel_in-row.
+      lv_col = lt_excel_in-col.
+      lv_col = lv_col + 1.
+      mac_fill_cell lv_row lv_col ls_out-zamount.
+      lv_col = lv_col + 1.
+      mac_fill_cell lv_row lv_col ls_out-zamount1.
+    ENDIF.
+  ENDLOOP.
+
+  CALL METHOD OF lo_sheet 'CELLS' = lo_cell EXPORTING #1 = 1 #2 = 1.
+  CALL METHOD OF lo_cell 'SELECT'.
+  SET PROPERTY OF lo_excel 'CutCopyMode' = 0.
+
+  CALL METHOD OF lo_workbook 'SAVE'.
+  SET PROPERTY OF lo_excel 'VISIBLE' = 1.
+  FREE OBJECT:lo_excel,lo_workbooks,lo_workbook,lo_sheet,lo_range,lo_cell.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_JTCHMX_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_jtchmx_data .
+  DATA:BEGIN OF lt_ckmlhd OCCURS 0,
+         kalnr LIKE ckmlhd-kalnr,
+         matnr LIKE ckmlhd-matnr,
+         bwkey LIKE ckmlhd-bwkey,
+         bdatj LIKE ckmlcr-bdatj,
+         poper LIKE ckmlcr-poper,
+         pvprs LIKE ckmlcr-pvprs,
+         peinh LIKE ckmlcr-peinh,
+       END OF lt_ckmlhd.
+
+  DATA:BEGIN OF lt_mchb OCCURS 0,
+         matnr LIKE mchb-matnr,
+         werks LIKE mchb-werks,
+         lgort LIKE mchb-lgort,
+         charg LIKE mchb-charg,
+         clabs LIKE mchb-clabs,
+         objek LIKE inob-objek,
+       END OF lt_mchb.
+  DATA:BEGIN OF lt_ausp OCCURS 0,
+         matnr LIKE mch1-matnr,
+         charg LIKE mch1-charg,
+         objek LIKE ausp-objek,
+         atinn LIKE ausp-atinn,
+         atwrt LIKE ausp-atwrt,
+       END OF lt_ausp.
+  DATA:lv_atinn LIKE ausp-atinn.
+
+  DATA:ls_data LIKE LINE OF gt_out.
+
+  REFRESH lt_ckmlhd.
+***销售单位
+  SELECT matnr
+         werks
+         lgort
+         charg
+         clabs
+    INTO CORRESPONDING FIELDS OF TABLE lt_mchb
+    FROM mchb
+   WHERE werks IN r_bwkey
+     AND lfgja = p_gjahr
+     AND lfmon = p_monat.
+
+  SELECT matnr
+         werks
+         charg
+         lblab AS clabs
+    APPENDING CORRESPONDING FIELDS OF TABLE lt_mchb
+    FROM mslb
+   WHERE werks IN r_bwkey
+     AND lfgja = p_gjahr
+     AND lfmon = p_monat.
+
+  SELECT matnr
+         werks
+         charg
+         kulab AS clabs
+    APPENDING CORRESPONDING FIELDS OF TABLE lt_mchb
+    FROM msku
+   WHERE werks IN r_bwkey
+     AND lfgja = p_gjahr
+     AND lfmon = p_monat.
+
+  DELETE lt_mchb WHERE clabs EQ 0.
+  LOOP AT lt_mchb.
+    CONCATENATE lt_mchb-matnr lt_mchb-charg INTO lt_mchb-objek.
+    MODIFY lt_mchb.
+  ENDLOOP.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ATINN_INPUT'
+    EXPORTING
+      input  = 'Z_BATCH_VENDOR'
+    IMPORTING
+      output = lv_atinn.
+
+  IF lt_mchb[] IS NOT INITIAL.
+    SELECT  a~matnr
+            a~charg
+            b~objek
+            b~atinn
+            b~atwrt
+      INTO CORRESPONDING FIELDS OF TABLE lt_ausp
+      FROM mch1 AS a
+      INNER JOIN ausp AS b
+      ON a~cuobj_bm = b~objek
+      FOR ALL ENTRIES IN lt_mchb
+      WHERE a~matnr = lt_mchb-matnr
+        AND a~charg = lt_mchb-charg
+        AND b~atinn = lv_atinn
+        AND b~klart = '023'.
+
+    SELECT  a~kalnr
+            a~matnr
+            a~bwkey
+            b~bdatj
+            b~poper
+            b~pvprs
+            b~peinh
+         INTO CORRESPONDING FIELDS OF TABLE lt_ckmlhd
+         FROM ckmlhd AS a
+         INNER JOIN ckmlcr AS b
+         ON a~kalnr = b~kalnr
+         FOR ALL ENTRIES IN lt_mchb
+         WHERE a~bwkey = lt_mchb-werks
+           AND a~matnr = lt_mchb-matnr
+           AND b~bdatj = p_gjahr
+           AND b~poper = p_monat
+           AND b~curtp = '10'
+           AND b~vprsv = 'V'.
+  ENDIF.
+
+  SORT lt_ausp BY matnr charg.
+  SORT lt_ckmlhd BY bwkey matnr.
+  LOOP AT lt_mchb.
+    READ TABLE lt_ckmlhd WITH KEY bwkey = lt_mchb-werks matnr = lt_mchb-matnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      READ TABLE lt_ausp WITH KEY matnr = lt_mchb-matnr charg = lt_mchb-charg BINARY SEARCH.
+      IF sy-subrc = 0.
+        CASE lt_ausp-atwrt.
+          WHEN '1050' OR '0000001050'.  "雷泰
+            ls_data-zexno = '06'.
+          WHEN '1000' OR '0000001000'.  "雷赛
+            ls_data-zexno = '07'.
+          WHEN '1030' OR '0000001030'. "控制技术
+            ls_data-zexno = '08'.
+          WHEN '1010' OR '0000001010'."软件
+            ls_data-zexno = '09'.
+          WHEN '1040' OR '0000001040'."雷智
+            ls_data-zexno = '10'.
+          WHEN '1020' OR '0000001020'."香港雷赛
+            ls_data-zexno = '11'.
+          WHEN OTHERS.
+            CONTINUE.
+        ENDCASE.
+        CHECK ls_data-zexno IS NOT INITIAL.
+        ls_data-zamount =  lt_mchb-clabs * lt_ckmlhd-pvprs / lt_ckmlhd-peinh.
+        COLLECT ls_data INTO gt_out.
+        CLEAR ls_data.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_HALF_RJFY_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_half_rjfy_data TABLES lt_bsis STRUCTURE bsis.
+  DATA:ls_data LIKE gt_out.
+
+  REFRESH:gt_bseg,gt_ckmlhd,gt_ckmlprkeph.
+  CHECK lt_bsis[] IS NOT INITIAL.
+
+  SELECT  a~bukrs
+          a~belnr
+          a~gjahr
+          a~buzei
+          a~dmbtr
+          a~shkzg
+          b~bklas
+          a~matnr
+          a~werks
+          a~hkont
+      INTO CORRESPONDING FIELDS OF TABLE gt_bseg
+      FROM bseg AS a
+      INNER JOIN mbew AS b
+      ON a~matnr = b~matnr
+      AND a~werks = b~bwkey
+      FOR ALL ENTRIES IN lt_bsis
+      WHERE a~werks IN r_bwkey
+        AND a~bukrs = lt_bsis-bukrs
+        AND a~belnr = lt_bsis-belnr
+        AND a~gjahr = lt_bsis-gjahr
+        AND a~buzei = lt_bsis-buzei.
+
+***每个物料的软件费用是汇总的，只需要保留一条去找软件费用
+  SORT gt_bseg BY matnr werks.
+  DELETE ADJACENT DUPLICATES FROM gt_bseg COMPARING matnr werks.
+
+  CHECK gt_bseg[] IS NOT INITIAL.
+
+  SELECT  kalnr
+          matnr
+          bwkey
+       INTO CORRESPONDING FIELDS OF TABLE gt_ckmlhd
+       FROM ckmlhd
+       FOR ALL ENTRIES IN gt_bseg
+       WHERE bwkey = gt_bseg-werks
+         AND matnr = gt_bseg-matnr.
+
+  IF gt_ckmlhd[] IS NOT INITIAL.
+    SELECT a~kalnr
+           a~bdatj
+           a~poper
+           a~kst012
+           b~lbkum
+           c~losgr
+      INTO CORRESPONDING FIELDS OF TABLE gt_ckmlprkeph
+      FROM ckmlprkeph AS a
+      INNER JOIN ckmlpp AS b
+      ON  a~kalnr = b~kalnr
+      AND a~bdatj = b~bdatj
+      AND a~poper = b~poper
+      AND a~untper = b~untper
+      INNER JOIN ckmlprkeko AS c
+      ON a~kalnr = c~kalnr
+      AND a~bdatj = c~bdatj
+      AND a~poper = c~poper
+      AND a~untper = c~untper
+      FOR ALL ENTRIES IN gt_ckmlhd
+      WHERE a~kalnr = gt_ckmlhd-kalnr
+        AND a~bdatj = p_gjahr
+        AND a~poper = p_monat
+        AND a~curtp = '10'
+        AND b~status = '70'
+        AND a~prtyp = 'V'
+        AND a~kkzst = space.
+  ENDIF.
+
+  SORT gt_ckmlhd BY matnr bwkey.
+
+  LOOP AT gt_bseg.
+    IF gt_bseg-shkzg = 'H'.
+      gt_bseg-dmbtr = -1 * gt_bseg-dmbtr.
+    ENDIF.
+    READ TABLE gt_ckmlhd WITH KEY matnr = gt_bseg-matnr bwkey = gt_bseg-werks BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT gt_ckmlprkeph WHERE kalnr = gt_ckmlhd-kalnr.
+        IF gt_bseg-hkont = '1403000000'.
+          ls_data-zexno = '02'.
+        ELSEIF gt_bseg-hkont = '1402000000'.
+          ls_data-zexno = '03'.
+        ENDIF.
+        IF gt_ckmlprkeph-losgr NE 0.
+          ls_data-zamount1 = ls_data-zamount1 - gt_ckmlprkeph-kst012 * gt_ckmlprkeph-lbkum / gt_ckmlprkeph-losgr.
+        ENDIF.
+      ENDLOOP.
+      COLLECT ls_data INTO gt_out.
+      CLEAR ls_data.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.

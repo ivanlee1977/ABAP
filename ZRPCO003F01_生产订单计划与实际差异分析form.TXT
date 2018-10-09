@@ -1,0 +1,326 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO003F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  SYSTEM_STATE_CHECK
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_P_SYCP2  text
+*----------------------------------------------------------------------*
+FORM frm_system_state_check USING i_dialog TYPE flag
+                            CHANGING c_state LIKE tj02t-txt04
+                                     c_state_nr LIKE jest-stat.
+
+  DATA: l_state  LIKE                   c_state,
+        ls_tj02t TYPE                   tj02t,
+        lt_tj02t TYPE STANDARD TABLE OF tj02t.
+
+  IF c_state IS INITIAL.
+    CLEAR c_state_nr.
+  ENDIF.
+
+  CHECK NOT c_state IS INITIAL.
+* Get all possible values
+  SELECT * FROM tj02t INTO TABLE lt_tj02t  WHERE txt04 = c_state AND spras = sy-langu.
+  IF sy-subrc <> 0.
+*   If not found, try in german (see function module STATUS_TEXT_CONVERSION)
+    SELECT * FROM tj02t INTO TABLE lt_tj02t WHERE txt04 = c_state AND spras = 'D'.
+    IF sy-subrc <> 0.
+*     If not found, try with uppercase letters
+      l_state = c_state.
+      TRANSLATE l_state TO UPPER CASE.                   "#EC TRANSLANG
+      SELECT * FROM tj02t INTO TABLE lt_tj02t WHERE txt04 = l_state AND spras = sy-langu.
+      IF sy-subrc <> 0.
+*       If not found, try in german (see function module STATUS_TEXT_CONVERSION)
+        SELECT * FROM tj02t INTO TABLE lt_tj02t WHERE txt04 = l_state AND spras = 'D'.
+        IF sy-subrc <> 0." If not found, give up with error message
+          CLEAR c_state_nr.
+          MESSAGE e249(bs) WITH c_state sy-langu 'D'.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+* Check if value is unambiguous
+  IF lines( lt_tj02t ) = 1."Take over found values
+    READ TABLE lt_tj02t INTO ls_tj02t INDEX 1.
+    c_state =    ls_tj02t-txt04.
+    c_state_nr = ls_tj02t-istat.
+  ELSE.
+*   Check if internal status number was already provided by F4-help
+    IF c_state_nr IS NOT INITIAL.
+      READ TABLE lt_tj02t INTO ls_tj02t WITH KEY istat = c_state_nr.
+      IF sy-subrc = 0."Internal status number already there, exit
+        EXIT.
+      ENDIF.
+    ENDIF.
+*   Value is ambiguous, F4-help must be used
+    CLEAR c_state_nr.
+    IF NOT i_dialog IS INITIAL.
+      MESSAGE e054(cois) WITH c_state.
+    ENDIF.
+  ENDIF.
+ENDFORM.                               " SYSTEM_STATE_CHECK
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  RANGES:r_stat FOR jcds-stat.
+  DATA:lt_fieldcat TYPE lvc_t_fcat.
+  DATA: dy_table TYPE REF TO data,
+        dy_line  TYPE REF TO data.
+  FIELD-SYMBOLS:<fs_data> TYPE STANDARD TABLE,
+                <wa_data> TYPE                 any.
+  DATA:BEGIN OF lt_makt OCCURS 0,
+         matnr LIKE makt-matnr,
+         maktx LIKE makt-maktx,
+       END OF lt_makt.
+  DATA:ls_time_range LIKE kkb_time_range.
+
+  CONCATENATE p_gjahr p_monat '01' INTO gv_date_from.
+  CALL FUNCTION 'FKK_LAST_DAY_OF_MONTH'
+    EXPORTING
+      day_in            = gv_date_from
+    IMPORTING
+      last_day_of_month = gv_date_to
+    EXCEPTIONS
+      day_in_no_date    = 1
+      OTHERS            = 2.
+
+***抓取满足条件的生产订单数据
+  IF p_sysh1 IS NOT INITIAL AND p_kz_e1 IS INITIAL.
+    r_stat = 'IEQ'.
+    r_stat-low = p_sysh1.
+    APPEND r_stat.
+    CLEAR r_stat.
+  ENDIF.
+  IF p_sysh2 IS NOT INITIAL AND p_kz_e1 IS INITIAL .
+    r_stat = 'IEQ'.
+    r_stat-low = p_sysh2.
+    APPEND r_stat.
+    CLEAR r_stat.
+  ENDIF.
+
+  SELECT a~aufnr a~werks a~objnr b~stat
+         b~chgnr b~udate b~utime b~inact
+         c~kdauf c~kdpos c~matnr
+    INTO CORRESPONDING FIELDS OF TABLE gt_aufk
+    FROM aufk AS a
+    INNER JOIN jcds AS b
+    ON a~objnr = b~objnr
+    INNER JOIN afpo AS c
+    ON a~aufnr = c~aufnr
+    WHERE a~werks = p_werks
+      AND a~aufnr IN s_aufnr
+      AND c~matnr IN s_matnr
+      AND b~stat  IN r_stat
+      AND b~udate <= gv_date_to.
+  SORT gt_aufk BY aufnr stat udate DESCENDING utime DESCENDING.
+  DELETE ADJACENT DUPLICATES FROM gt_aufk COMPARING aufnr stat.
+  IF p_sysh1 IS NOT INITIAL AND p_kz_e1 IS INITIAL.
+    LOOP AT gt_aufk WHERE stat = p_sysh1 AND inact = 'X'.
+      DELETE gt_aufk WHERE aufnr = gt_aufk-aufnr .
+    ENDLOOP.
+  ENDIF.
+  IF p_sysh1 IS NOT INITIAL AND p_kz_e1 IS NOT INITIAL.
+    LOOP AT gt_aufk WHERE stat = p_sysh1 AND inact = ''.
+      DELETE gt_aufk WHERE aufnr = gt_aufk-aufnr .
+    ENDLOOP.
+  ENDIF.
+  IF p_sysh2 IS NOT INITIAL AND p_kz_e2 IS INITIAL.
+    LOOP AT gt_aufk WHERE stat = p_sysh2 AND inact = 'X'.
+      DELETE gt_aufk WHERE aufnr = gt_aufk-aufnr .
+    ENDLOOP.
+  ENDIF.
+  IF p_sysh2 IS NOT INITIAL AND p_kz_e2 IS NOT INITIAL.
+    LOOP AT gt_aufk WHERE stat = p_sysh2 AND inact = ''.
+      DELETE gt_aufk WHERE aufnr = gt_aufk-aufnr .
+    ENDLOOP.
+  ENDIF.
+*  IF  p_sysh1 IS INITIAL AND  p_sysh2 IS INITIAL.
+  DELETE ADJACENT DUPLICATES FROM gt_aufk COMPARING aufnr.
+*  ENDIF.
+
+  IF gt_aufk[] IS NOT INITIAL.
+    SELECT matnr maktx
+      INTO CORRESPONDING FIELDS OF TABLE lt_makt
+      FROM makt
+      FOR ALL ENTRIES IN gt_aufk
+      WHERE matnr = gt_aufk-matnr
+        AND spras = sy-langu.
+    SORT lt_makt BY matnr.
+  ENDIF.
+
+  CLEAR ls_time_range.
+  IF r2 = 'X'.
+    ls_time_range-perio1 = p_monat.
+    ls_time_range-perio2 = p_monat.
+    ls_time_range-gjahr1 = p_gjahr.
+    ls_time_range-gjahr2 = p_gjahr.
+  ELSE.
+    ls_time_range-kumul = 'X'.
+  ENDIF.
+
+  LOOP AT gt_aufk.
+***调用函数获取各组件成本
+    CALL FUNCTION 'K_KKB_KKBCS_ORDER_REPORT'
+      EXPORTING
+        i_aufnr          = gt_aufk-aufnr
+*       I_CONTAINER      =
+        i_time_range     = ls_time_range
+*       I_PIVOT          =
+*       I_ROLLD          =
+*       I_POSNR          =
+*       I_NINCL          =
+*       I_VARIA          =
+*       I_WIP            =
+*       I_HEADER         =
+      EXCEPTIONS
+        object_not_found = 1
+        no_data          = 2
+        no_authority     = 3
+        OTHERS           = 4.
+    IF lt_fieldcat IS INITIAL.
+      IMPORT itab_fieldcat = lt_fieldcat FROM MEMORY ID 'ZRPCO003_FIELDCAT'.
+      FREE MEMORY ID 'ZRPCO003_FIELDCAT'.
+***创建动态内表
+      CALL METHOD cl_alv_table_create=>create_dynamic_table
+        EXPORTING
+          it_fieldcatalog = lt_fieldcat
+        IMPORTING
+          ep_table        = dy_table.
+
+      ASSIGN dy_table->* TO <fs_data>.
+      CREATE DATA dy_line LIKE LINE OF <fs_data>.
+      ASSIGN dy_line->* TO <wa_data>.
+    ENDIF.
+    REFRESH <fs_data>.
+    IMPORT itab = <fs_data> FROM MEMORY ID 'ZRPCO003'.
+    FREE MEMORY ID 'ZRPCO003'.
+
+    CLEAR gs_data.
+    MOVE-CORRESPONDING gt_aufk TO gs_data.
+    gs_data-zmatn = gt_aufk-matnr.
+    READ TABLE lt_makt WITH KEY matnr = gs_data-zmatn BINARY SEARCH.
+    IF sy-subrc = 0.
+      gs_data-maktx = lt_makt-maktx.
+    ENDIF.
+
+    LOOP AT <fs_data> INTO  <wa_data>.
+      MOVE-CORRESPONDING  <wa_data> TO gt_out.
+      IF gt_out-matnr IS NOT INITIAL.
+        SELECT SINGLE maktx INTO gt_out-matnr_text FROM makt WHERE matnr = gt_out-matnr AND spras = sy-langu.
+      ENDIF.
+      MOVE-CORRESPONDING gs_data TO gt_out.
+      APPEND gt_out.
+      CLEAR gt_out.
+    ENDLOOP.
+  ENDLOOP.
+
+  SORT gt_out BY aufnr.
+
+ENDFORM.                    " FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_fieldcat .
+
+  mcr_build_fieldcat:'AUFNR'       '生产订单号'     'AUFNR'      'AFPO'     'X',
+                     'ZMATN'       '成品料号'       'MATNR'      'AFPO'     'X',
+                     'MAKTX'       '成品料号描述'   'MAKTX'      'MAKT'     '',
+                     'MATNR'       '组件料号'       'MATNR'      'KKBCS_OUT' 'X',
+                     'MATNR_TEXT'  '组件描述'       'KTEXT'      'KKBCT'     '',
+                     'KOSTL'       '成本中心代码'   'KOSTL'      'KKBCS_OUT' 'X',
+                     'KOSTL_TEXT'  '成本中心描述'   'KTEXT'      'KKBCT'     '',
+                     'KSTAR'       '成本要素'       'KSTAR'      'KKBCS_OUT' 'X',
+                     'KSTAR_TEXT'  '成本要素描述'   'KTEXT'      'KKBCT'     '',
+                     'MEINH'       '单位'           'MEINH'      'KKBCS_OUT'  '',
+*                    'PLANKOST_G'  '计划金额'       'PLANKOST_G' 'KKBCS_OUT' '',
+                     'PLANMENG_G'  '计划数量'       'PLANMENG_G' 'KKBCS_OUT' '',
+*                    'ISTKOST_G'   '实际金额'       'ISTKOST_G'  'KKBCS_OUT' '',
+                     'SOLLMENG_G'  '目标数量'       'PLIS_MENG_P' 'KKBCS_OUT' '',
+                     'ISTMENG_G'   '实际数量'       'ISTMENG_G'  'KKBCS_OUT' '',
+*                    'PLIS_KOST_A' '差异金额'       'PLIS_KOST_A' 'KKBCS_OUT' '',
+                     'PLIS_MENG_P' '计划/实际数量差异'       'PLIS_MENG_P' 'KKBCS_OUT' '',
+                     'SOIS_MENG_P' '目标/实际数量差异'       'PLIS_MENG_P' 'KKBCS_OUT' ''.
+  mcr_build_fieldcat:'PLANKOST_G'  '计划金额'       'PLANKOST_G' 'KKBCS_OUT' '',
+                    'SOLLKOST_G' '目标成本'       'PLIS_MENG_P' 'KKBCS_OUT' '',
+                    'ISTKOST_G'   '实际金额'       'ISTKOST_G'  'KKBCS_OUT' '',
+                    'PLIS_KOST_A' '计划/实际成本差异'       'PLIS_KOST_A' 'KKBCS_OUT' '',
+                    'SOIS_KOST_A' '目标/实际成本差异'       'PLIS_MENG_P' 'KKBCS_OUT' ''.
+
+  gs_layout-colwidth_optimize = 'X'.
+  gs_layout-zebra = 'X'.
+ENDFORM.                    " FRM_GET_FIELDCAT
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+*     I_INTERFACE_CHECK  = ' '
+*     I_BYPASSING_BUFFER = ' '
+*     I_BUFFER_ACTIVE    = ' '
+      i_callback_program = gv_repid
+*     I_CALLBACK_PF_STATUS_SET          = ' '
+*     I_CALLBACK_USER_COMMAND           = ' '
+*     I_CALLBACK_TOP_OF_PAGE            = ' '
+*     I_CALLBACK_HTML_TOP_OF_PAGE       = ' '
+*     I_CALLBACK_HTML_END_OF_LIST       = ' '
+*     I_STRUCTURE_NAME   =
+*     I_BACKGROUND_ID    = ' '
+*     I_GRID_TITLE       =
+*     I_GRID_SETTINGS    =
+      is_layout          = gs_layout
+      it_fieldcat        = gt_fcat[]
+*     IT_EXCLUDING       =
+*     IT_SPECIAL_GROUPS  =
+*     IT_SORT            =
+*     IT_FILTER          =
+*     IS_SEL_HIDE        =
+      i_default          = 'X'
+      i_save             = 'A'
+*     IS_VARIANT         =
+*     IT_EVENTS          =
+*     IT_EVENT_EXIT      =
+*     IS_PRINT           =
+*     IS_REPREP_ID       =
+*     I_SCREEN_START_COLUMN             = 0
+*     I_SCREEN_START_LINE               = 0
+*     I_SCREEN_END_COLUMN               = 0
+*     I_SCREEN_END_LINE  = 0
+*     I_HTML_HEIGHT_TOP  = 0
+*     I_HTML_HEIGHT_END  = 0
+*     IT_ALV_GRAPHICS    =
+*     IT_HYPERLINK       =
+*     IT_ADD_FIELDCAT    =
+*     IT_EXCEPT_QINFO    =
+*     IR_SALV_FULLSCREEN_ADAPTER        =
+* IMPORTING
+*     E_EXIT_CAUSED_BY_CALLER           =
+*     ES_EXIT_CAUSED_BY_USER            =
+    TABLES
+      t_outtab           = gt_out[]
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.                    " FRM_OUTPUT_DATA

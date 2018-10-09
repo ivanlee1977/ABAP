@@ -1,0 +1,26 @@
+*& 程序名： ZRPCO009
+*& 创建者(公司)/日期： 雷鸣涛/20171018
+*& 程序描述：新产品总表
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+REPORT ZRPCO020.
+
+INCLUDE ZRPCO020_T01.
+INCLUDE ZRPCO020_S01.
+INCLUDE ZRPCO020_F01.
+
+INITIALIZATION.
+
+AT SELECTION-SCREEN.
+
+START-OF-SELECTION.
+*  IF s_bukrs[] IS INITIAL AND s_ebeln[] IS INITIAL AND s_ekgrp[] IS INITIAL AND s_ekorg[] IS INITIAL
+*  AND   s_budat[] IS INITIAL AND s_lifnr[] IS INITIAL .
+*    MESSAGE '请输入相应查找条件！' TYPE 'E'.
+*    RETURN.
+*  ENDIF.
+
+  PERFORM frm_getdata.
+  PERFORM frm_processdata.
+  PERFORM frm_getfact.
+  PERFORM frm_show.

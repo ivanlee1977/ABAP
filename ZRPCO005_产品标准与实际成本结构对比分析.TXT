@@ -1,0 +1,311 @@
+*&---------------------------------------------------------------------*
+*& 程序名： ZRPCO005
+*& 创建者(公司)/日期： QUYT/20170731
+*& 程序描述：产品标准与实际成本结构对比分析
+*&---------------------------------------------------------------------*
+*& 版本     修改者(公司)     日期         修改描述
+*& 1.0.0    QUYT           20170731     创建程序
+*&---------------------------------------------------------------------*
+REPORT zrpco005.
+
+INCLUDE zrpco005t01.  "全局数据定义
+INCLUDE zrpco005s01.  "选择界面定义
+INCLUDE zrpco005f01.  "子例程定义
+
+*初始化
+INITIALIZATION.
+  PERFORM frm_initial_data.
+
+START-OF-SELECTION.
+
+  PERFORM frm_get_data.
+  PERFORM frm_process_data.
+  PERFORM frm_show_data.
+
+*&---------------------------------------------------------------------*
+*&      Form  GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+
+  v_poper = p_poper.
+  SHIFT v_poper LEFT DELETING LEADING '0'.
+  CONCATENATE p_bdatj '年' v_poper '月' INTO v_title SEPARATED BY ''.
+  CONDENSE v_title NO-GAPS.
+
+  SELECT ckmlhd~matnr ckmlhd~bwkey ckmlhd~kalnr ckmlhd~bwtar
+         mara~mtart   mara~matkl
+    INTO CORRESPONDING FIELDS OF TABLE it_tab
+    FROM ckmlhd INNER JOIN mara ON ckmlhd~matnr = mara~matnr
+    WHERE ckmlhd~matnr IN s_matnr
+      AND ckmlhd~bwkey IN s_bwkey
+      AND mara~mtart IN s_mtart
+      AND mara~matkl IN s_matkl
+      AND mara~matnr IN s_matnr
+      ORDER BY kalnr.
+
+  IF it_tab IS NOT INITIAL.
+*    取实际成本
+    SELECT *
+      INTO CORRESPONDING FIELDS OF TABLE it_ckmlprkeph
+      FROM ckmlprkeph  FOR ALL ENTRIES IN it_tab
+      WHERE kalnr = it_tab-kalnr
+        AND bdatj = p_bdatj
+        AND poper = p_poper
+        AND kkzst EQ space
+        AND prtyp EQ 'V'
+        AND curtp = '10'.
+
+*      取标准成本
+    SELECT *
+   INTO CORRESPONDING FIELDS OF TABLE it_keph
+   FROM keph  FOR ALL ENTRIES IN it_tab
+   WHERE kalnr = it_tab-kalnr
+     AND kkzst EQ space.
+
+    "取评估范围
+    SELECT a~matnr a~bwkey a~bklas b~bkbez
+    INTO CORRESPONDING FIELDS OF TABLE it_mbew
+    FROM mbew AS a
+    INNER JOIN t025t AS b ON a~bklas EQ b~bklas AND spras EQ sy-langu
+    FOR ALL ENTRIES IN it_tab
+    WHERE a~bwkey EQ it_tab-bwkey
+      AND a~matnr EQ it_tab-matnr
+      AND a~bklas IN s_bklas.
+
+  ENDIF.
+  LOOP AT it_keph INTO wa_keph.
+    wa_keph-bdatj = wa_keph-kadky+0(4).
+    wa_keph-poper = wa_keph-kadky+4(2).
+    MODIFY it_keph FROM  wa_keph .
+  ENDLOOP.
+
+ENDFORM.                    " GET_DATA
+*&---------------------------------------------------------------------*
+*&      Form  PROCESS_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_process_data .
+
+  LOOP AT it_tab INTO wa_tab.
+    SORT it_mbew BY matnr.
+    READ TABLE it_mbew INTO wa_mbew WITH KEY matnr = wa_tab-matnr bwkey = wa_tab-bwkey.
+    IF sy-subrc = 0.
+      wa_tab-bklas = wa_mbew-bklas.
+      wa_tab-bkbez = wa_mbew-bkbez.
+    ENDIF.
+
+    SORT it_keph BY kalnr .
+    READ TABLE it_keph INTO wa_keph WITH KEY kalnr = wa_tab-kalnr bdatj = p_bdatj poper = p_poper.
+    IF sy-subrc = 0 .
+      wa_tab-kst001 = wa_keph-kst001.
+      wa_tab-kst002 = wa_keph-kst002.
+      wa_tab-kst004 = wa_keph-kst004.
+      wa_tab-kst006 = wa_keph-kst006.
+      wa_tab-kst008 = wa_keph-kst008.
+      wa_tab-kst010 = wa_keph-kst010.
+      wa_tab-kst012 = wa_keph-kst012.
+      wa_tab-kst014 = wa_keph-kst014.
+      wa_tab-kst015 = wa_keph-kst015.
+      wa_tab-kst016 = wa_keph-kst016.
+      wa_tab-kst018 = wa_keph-kst018.
+      wa_tab-kst020 = wa_keph-kst020.
+      wa_tab-kst022 = wa_keph-kst022.
+      wa_tab-kst024 = wa_keph-kst024.
+      wa_tab-kst026 = wa_keph-kst026.
+      wa_tab-bzcb =  wa_tab-kst001 + wa_tab-kst002 + wa_tab-kst004 + wa_tab-kst006 + wa_tab-kst008 + wa_tab-kst010 + wa_tab-kst012
+                  +  wa_tab-kst014 + wa_tab-kst015 + wa_tab-kst016 + wa_tab-kst018 + wa_tab-kst020 + wa_tab-kst022 + wa_tab-kst024
+                  +  wa_tab-kst026.
+    ENDIF.
+
+    READ TABLE it_ckmlprkeph INTO wa_ckmlprkeph WITH KEY kalnr = wa_tab-kalnr prtyp = 'V'.
+    IF sy-subrc = 0 .
+      wa_tab-kst0011 = wa_ckmlprkeph-kst001.
+      wa_tab-kst0021 = wa_ckmlprkeph-kst002.
+      wa_tab-kst0041 = wa_ckmlprkeph-kst004.
+      wa_tab-kst0061 = wa_ckmlprkeph-kst006.
+      wa_tab-kst0081 = wa_ckmlprkeph-kst008.
+      wa_tab-kst0101 = wa_ckmlprkeph-kst010.
+      wa_tab-kst0121 = wa_ckmlprkeph-kst012.
+      wa_tab-kst0141 = wa_ckmlprkeph-kst014.
+      wa_tab-kst0151 = wa_ckmlprkeph-kst015.
+      wa_tab-kst0161 = wa_ckmlprkeph-kst016.
+      wa_tab-kst0181 = wa_ckmlprkeph-kst018.
+      wa_tab-kst0201 = wa_ckmlprkeph-kst020.
+      wa_tab-kst0221 = wa_ckmlprkeph-kst022.
+      wa_tab-kst0241 = wa_ckmlprkeph-kst024.
+      wa_tab-kst0261 = wa_ckmlprkeph-kst026.
+
+      wa_tab-sjcb =  wa_tab-kst0011 + wa_tab-kst0021 + wa_tab-kst0041 + wa_tab-kst0061 + wa_tab-kst0081 + wa_tab-kst0101 + wa_tab-kst0121
+                  +  wa_tab-kst0141 + wa_tab-kst0151 + wa_tab-kst0161 + wa_tab-kst0181 + wa_tab-kst0201 + wa_tab-kst0221 + wa_tab-kst0241
+                  +  wa_tab-kst0261.
+    ENDIF.
+    SELECT SINGLE name1 INTO wa_tab-name1 FROM t001w WHERE werks = wa_tab-bwkey.
+    SELECT SINGLE maktx INTO wa_tab-maktx FROM makt WHERE matnr = wa_tab-matnr AND spras = sy-langu.
+    SELECT SINGLE mtbez INTO wa_tab-mtbez FROM t134t WHERE mtart = wa_tab-mtart AND spras = sy-langu.
+    SELECT SINGLE wgbez INTO wa_tab-wgbez FROM t023t WHERE matkl = wa_tab-matkl AND spras = sy-langu.
+    MODIFY it_tab FROM wa_tab.
+  ENDLOOP.
+
+ENDFORM.                    " PROCESS_DATA
+*&---------------------------------------------------------------------*
+*&      Form  SHOW_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_show_data .
+  PERFORM frm_build_fieldcat.
+  PERFORM frm_build_sortcat. "#置排序和分###
+  PERFORM frm_build_layout. "#置#出格式
+  PERFORM frm_display_alv.
+ENDFORM.                    " SHOW_DATA
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_build_fieldcat .
+  DEFINE m_fieldcat.
+    it_fieldcat-key = &1.
+    it_fieldcat-fieldname = &2.
+    it_fieldcat-reptext_ddic = &3.
+    it_fieldcat-no_zero = &4.
+    it_fieldcat-do_sum = &5.
+    it_fieldcat-emphasize = &6.
+    APPEND it_fieldcat.
+  END-OF-DEFINITION.
+
+  REFRESH:it_fieldcat.
+  m_fieldcat  'X'   'MATNR'  '物料号'                          'X'  ''  ''  .
+  m_fieldcat  ''    'MAKTX'  '物料描述'                          'X'  ''  '' .
+  m_fieldcat  ''    'MTART'  '物料类型'                          'X'  ''  ''  .
+  m_fieldcat  ''    'MTBEZ'  '物料类型描述'                          'X'  ''  '' .
+  m_fieldcat  ''    'MATKL'  '物料组'                          'X'  ''  ''  .
+  m_fieldcat  ''    'WGBEZ'  '物料组描述'                          'X'  ''  '' .
+  m_fieldcat  ''    'BWKEY'  '工厂'                        'X'   ''  '' .
+  m_fieldcat  ''    'NAME1'  '工厂描述'                          'X'  ''  ''.
+  m_fieldcat  ''    'BKLAS'  '评估类'                          'X'  ''  '' .
+  m_fieldcat  ''    'BKBEZ'  '评估类型描述'                          'X'  ''  '' .
+  m_fieldcat  ''    'BZCB'   '标准成本'                          'X'  'X'  ''  .
+  m_fieldcat  ''    'KST001' '标准电阻电容'                          'X'  'X'  ''.
+  m_fieldcat  ''    'KST002' '标准二三极管'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST004' '标准端子插座'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST006' '标准IC'                                'X'  'X'  '' .
+  m_fieldcat  ''    'KST008' '标准PCB板'                             'X'  'X'  '' .
+  m_fieldcat  ''    'KST010' '标准结构件'                            'X'  'X'  '' .
+  m_fieldcat  ''    'KST012' '标准软件'                              'X'  'X'  '' .
+  m_fieldcat  ''    'KST014' '标准电机'                              'X'  'X'  '' .
+  m_fieldcat  ''    'KST015' '标准其他类'                            'X'  'X'  '' .
+  m_fieldcat  ''    'KST016' '标准人工及福利'                        'X'  'X'  '' .
+  m_fieldcat  ''    'KST018' '标准租赁费'                            'X'  'X'  '' .
+  m_fieldcat  ''    'KST020' '标准折旧摊销'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST022' '标准水电'                              'X'  'X'  '' .
+  m_fieldcat  ''    'KST024' '标准其他制费'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST026' '标准委外加工费'                        'X'  'X'  '' .
+  m_fieldcat  ''    'SJCB'   '实际成本'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST0011' '实际电阻电容'                          'X'  'X'  ''.
+  m_fieldcat  ''    'KST0021' '实际二三极管'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST0041' '实际端子插座'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST0061' '实际IC'                                'X'  'X'  '' .
+  m_fieldcat  ''    'KST0081' '实际PCB板'                             'X'  'X'  '' .
+  m_fieldcat  ''    'KST0101' '实际结构件'                            'X'  'X'  '' .
+  m_fieldcat  ''    'KST0121' '实际软件'                              'X'  'X'  '' .
+  m_fieldcat  ''    'KST0141' '实际电机'                              'X'  'X'  '' .
+  m_fieldcat  ''    'KST0151' '实际其他类'                            'X'  'X'  '' .
+  m_fieldcat  ''    'KST0161' '实际人工及福利'                        'X'  'X'  '' .
+  m_fieldcat  ''    'KST0181' '实际租赁费'                            'X'  'X'  '' .
+  m_fieldcat  ''    'KST0201' '实际折旧摊销'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST0221' '实际水电'                              'X'  'X'  '' .
+  m_fieldcat  ''    'KST0241' '实际其他制费'                          'X'  'X'  '' .
+  m_fieldcat  ''    'KST0261' '实际委外加工费'                        'X'  'X'  '' .
+
+
+ENDFORM.                    " BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_SORTCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_build_sortcat .
+  DEFINE m_sort.
+    lt_sort-tabname = &1.
+    lt_sort-fieldname = &2.
+    lt_sort-up        = &3.
+    APPEND lt_sort.
+  END-OF-DEFINITION.
+  m_sort 'IT_TAB' 'BWKEY' 'X'.
+  m_sort 'IT_TAB' 'MATNR' 'X'.
+ENDFORM.                    " BUILD_SORTCAT
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_LAYOUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_build_layout .
+  gs_layout-zebra                = 'X'.
+  gs_layout-no_vline             = ''.
+  gs_layout-colwidth_optimize    = 'X'.
+  gs_layout-detail_popup         = 'X'.
+  gs_layout-detail_initial_lines = 'X'.
+  gs_layout-detail_titlebar      = sy-tcode.
+  gs_layout-confirmation_prompt  = ''.
+  gs_layout-box_fieldname = 'BOX'.
+ENDFORM.                    " BUILD_LAYOUT
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_display_alv .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+*     i_callback_user_command  = 'ALV_USER_COMMAND'
+*     i_callback_pf_status_set = 'PF_STATUS_SET'
+      it_fieldcat        = it_fieldcat[]
+      it_events          = it_events[]
+      i_save             = 'A'
+      is_layout          = gs_layout
+      is_print           = gs_print
+      it_sort            = lt_sort[]
+      i_grid_title       = v_title
+    TABLES
+      t_outtab           = it_tab
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+ENDFORM.                    " DISPLAY_ALV
+
+*&---------------------------------------------------------------------*
+*&      Form  pf_status_set
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->RT_EXTAB   text
+*----------------------------------------------------------------------*
+*FORM pf_status_set USING rt_extab TYPE slis_t_extab.
+*  SET PF-STATUS 'ZSTANDARD'.
+*ENDFORM.                    "pf_status_set

@@ -1,0 +1,8 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO010S01
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_bukrs LIKE faglflext-rbukrs OBLIGATORY MODIF ID buk."公司代码
+SELECT-OPTIONS:s_datum FOR sy-datum+0(6) OBLIGATORY ."年度期间
+PARAMETERS: p_rfarea LIKE faglflext-rfarea OBLIGATORY." 费用类别
+SELECTION-SCREEN END OF BLOCK b1.

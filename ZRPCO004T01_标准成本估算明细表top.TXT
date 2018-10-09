@@ -1,0 +1,40 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO004T01
+*&---------------------------------------------------------------------*
+
+TABLES:macku.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       zmatn   LIKE keko-matnr, "物料号码
+       maktx   LIKE makt-maktx, "物料描述
+       feh_sta LIKE keko-feh_sta, "成本核算状态
+       stnum   LIKE keko-stnum,  "BOM号码
+       plnnr   LIKE keko-plnnr, "工艺路线号码
+       matnr   LIKE ckis-matnr, "组件料号
+       zmakt   LIKE makt-maktx, "组件描述
+       kostl   LIKE ckis-kostl, "成本中心代码
+       ktext   LIKE cskt-ktext, "成本中心描述
+       hrkft   LIKE ckis-hrkft, "原始组
+       HRKTX   LIKE tkkh2-HRKTX, "原始组描述
+       kstar   LIKE ckis-kstar, "成本要素
+       ztext   LIKE csku-ktext, "成本要素名称
+       menge   LIKE ckis-menge, "数量
+       meeht   LIKE ckis-meeht, "单位
+       wertn   LIKE ckis-wertn, "金额
+     END OF gt_out.
+
+***alv data define
+DATA:gs_layout TYPE slis_layout_alv,
+     gt_fcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE.
+
+DEFINE mcr_build_fieldcat.
+  gt_fcat-fieldname = &1.
+  gt_fcat-seltext_l = &2.
+  gt_fcat-seltext_m = &2.
+  gt_fcat-seltext_s = &2.
+  gt_fcat-ddictxt = 'L'.
+  gt_fcat-ref_fieldname = &3.
+  gt_fcat-ref_tabname = &4.
+  APPEND gt_fcat.
+  CLEAR gt_fcat.
+END-OF-DEFINITION.

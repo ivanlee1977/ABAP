@@ -1,0 +1,47 @@
+*&---------------------------------------------------------------------*
+*& 程序名： ZRPCO002
+*& 创建者(公司)/日期： LIJS/20170720
+*& 程序描述：计划价格批导入
+*&---------------------------------------------------------------------*
+*& 版本     修改者(公司)     日期         修改描述
+*& 1.0.0    LIJS           20170720     创建程序
+*&---------------------------------------------------------------------*
+REPORT zrpco002.
+
+
+INCLUDE ZRPCO002_TOP.      "全局数据定义
+INCLUDE ZRPCO002_S01.      "选择界面定义
+INCLUDE ZRPCO002_F01.      "子程序定义
+
+INITIALIZATION.
+  functxt-icon_id = icon_export.
+  functxt-icon_text = '模板下载'.
+  sscrfields-functxt_01 = functxt.
+
+AT SELECTION-SCREEN.
+  IF sscrfields-ucomm = 'FC01'."导出批导模板
+    PERFORM output_excel USING cs_objid.."导出EXCEL模版
+    "调用子程序，表示要下载模板至指定路径，cs_objid表示模板名称，在常量定义中已默认了模板名称
+    CLEAR sscrfields-ucomm.
+  ENDIF.
+************************选择路径F4********************
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_path .
+  PERFORM get_filename CHANGING p_path.
+
+START-OF-SELECTION.
+
+END-OF-SELECTION.
+  IF p_path IS NOT INITIAL AND s_matnr[] IS INITIAL .
+    CLEAR:gt_item[].
+    PERFORM get_file_data.
+    PERFORM check_data."检查数据有效性
+    PERFORM output_log."显示将批导信息
+*
+  ELSEIF p_path IS NOT INITIAL AND s_matnr IS NOT INITIAL.
+    MESSAGE '不允许同时输入文件EXCEL和物料编码' TYPE 'I'.
+    RETURN.
+  ELSEIF p_path IS INITIAL .
+    CLEAR:gt_alv[].
+    PERFORM get_data."取数据
+    PERFORM get_alv."ALV显示界面
+  ENDIF.

@@ -1,0 +1,14 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO005S01
+*&---------------------------------------------------------------------*
+
+***selection screen define
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_bdatj LIKE ckmlrunplant-gjahr OBLIGATORY MEMORY ID mlj."会计年度
+PARAMETERS: p_poper LIKE ckmlprkeph-poper OBLIGATORY MEMORY ID mlp."期间
+SELECT-OPTIONS: s_bwkey FOR ckmlhd-bwkey OBLIGATORY MEMORY ID wrk. "工厂
+SELECT-OPTIONS: s_mtart FOR mara-mtart."物料类型
+SELECT-OPTIONS: s_matkl FOR mara-matkl."物料组
+SELECT-OPTIONS: s_bklas FOR mbew-bklas."评估类
+SELECT-OPTIONS: s_matnr FOR mara-matnr."物料
+SELECTION-SCREEN END OF BLOCK b1.

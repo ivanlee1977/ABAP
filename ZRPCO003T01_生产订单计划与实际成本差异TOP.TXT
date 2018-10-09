@@ -1,0 +1,74 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO003T01
+*&---------------------------------------------------------------------*
+TABLES:bseg.
+
+CONSTANTS:yx TYPE c VALUE 'X'.
+
+DATA:BEGIN OF gt_aufk OCCURS 0,
+       aufnr LIKE aufk-aufnr,
+       objnr LIKE aufk-objnr,
+       werks LIKE aufk-werks,
+       kdauf LIKE afpo-kdauf,
+       kdpos LIKE afpo-kdpos,
+       matnr LIKE afpo-matnr,
+       stat  LIKE jcds-stat,
+       chgnr LIKE jcds-chgnr,
+       udate LIKE jcds-udate,
+       utime LIKE jcds-utime,
+       inact LIKE jcds-inact,
+     END OF gt_aufk.
+
+DATA:gv_date_from LIKE sy-datum,
+     gv_date_to   LIKE sy-datum.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       kdauf       LIKE afpo-kdauf,
+       kdpos       LIKE afpo-kdpos,
+       aufnr       LIKE aufk-aufnr,
+       zmatn       LIKE afpo-matnr,
+       maktx       LIKE makt-maktx,
+       matnr       LIKE kkbcs_out-matnr,"物料
+       matnr_text  TYPE kkbct-ktext,"物料文本
+       kostl       TYPE kkbcs_out-kostl,"成本中心
+       kostl_text  TYPE kkbct-ktext,"成本中心描述
+       kstar       TYPE kkbcs_out-kstar,"成本要素
+       kstar_text  TYPE kkbct-ktext,"成本要素名称
+       meinh       TYPE kkbcs_out-meinh,"单位
+       plankost_g  TYPE kkbcs_out-plankost_g,"计划金额
+       planmeng_g  TYPE kkbcs_out-planmeng_g,"计划数量
+       istkost_g   TYPE kkbcs_out-istkost_g,"实际金额
+       istmeng_g   TYPE kkbcs_out-istmeng_g,"实际数量
+       plis_kost_a TYPE kkbcs_out-plis_kost_a,"差异金额
+       plis_meng_p TYPE kkbcs_out-plis_meng_p,"差异数量
+       sois_meng_p TYPE kkbcs_out-sois_meng_p,  "add 20170119 目标/实际数量差异
+       sois_kost_a TYPE kkbcs_out-sois_kost_a,  "add 20170119 目标/实际成本差异
+       sollmeng_g  TYPE kkbcs_out-sollmeng_g,   "add 20170119 总目标数量
+       sollkost_g  TYPE kkbcs_out-sollkost_g,   "add 20170119 总计目标成本
+     END OF gt_out.
+
+DATA:BEGIN OF gs_data,
+       kdauf LIKE afpo-kdauf,
+       kdpos LIKE afpo-kdpos,
+       aufnr LIKE aufk-aufnr,
+       zmatn LIKE afpo-matnr,
+       maktx LIKE makt-maktx,
+     END OF gs_data.
+
+***alv data define
+DATA:gv_repid  LIKE sy-repid VALUE sy-repid,
+     gs_layout TYPE slis_layout_alv,
+     gt_fcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE.
+
+DEFINE mcr_build_fieldcat.
+  gt_fcat-fieldname = &1.
+  gt_fcat-seltext_l = &2.
+  gt_fcat-seltext_m = &2.
+  gt_fcat-seltext_s = &2.
+  gt_fcat-ddictxt = 'L'.
+  gt_fcat-ref_fieldname = &3.
+  gt_fcat-ref_tabname = &4.
+  gt_fcat-no_zero = &5.
+  APPEND GT_FCAT.
+  CLEAR GT_FCAT.
+END-OF-DEFINITION.

@@ -1,0 +1,551 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO001_F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  GET_FILENAME
+*&---------------------------------------------------------------------*
+FORM get_filename  CHANGING p_path.
+
+  DATA: l_v_file_filter  TYPE string.
+  DATA: l_v_filetable TYPE file_table,
+        l_t_filetable TYPE filetable.
+  DATA: l_v_rc           TYPE i.
+  DATA: l_v_user_action  TYPE i.
+
+  l_v_file_filter = '(*.xlsx;*.xls)|*.xlsx;*.xls|'.
+  cl_gui_frontend_services=>file_open_dialog(
+     EXPORTING window_title = 'Select file'
+               file_filter  = l_v_file_filter
+     CHANGING  file_table   = l_t_filetable
+               rc           = l_v_rc
+               user_action  = l_v_user_action ).
+  CHECK l_v_user_action EQ 0.
+  CHECK l_t_filetable[] IS NOT INITIAL.
+  READ TABLE l_t_filetable INTO l_v_filetable INDEX 1.
+  p_path = l_v_filetable-filename.
+ENDFORM.                    "get_filename
+
+*&---------------------------------------------------------------------*
+*&      Form  get_file_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_file_data .
+
+  DATA:lt_upload LIKE alsmex_tabline OCCURS 0 WITH HEADER LINE.
+
+  FIELD-SYMBOLS  <field>.
+  FIELD-SYMBOLS: <l_fs_intern> TYPE alsmex_tabline."表头行
+  FIELD-SYMBOLS: <l_fs_item> LIKE gw_item.
+  DATA:l_structure TYPE REF TO data.
+
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = p_path
+      i_begin_col             = 1
+      i_begin_row             = 2
+      i_end_col               = 20
+      i_end_row               = 60000
+    TABLES
+      intern                  = lt_upload
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+        WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+  CREATE DATA l_structure LIKE gw_item.
+  LOOP AT lt_upload ASSIGNING <l_fs_intern>.
+    AT NEW row.
+      ASSIGN l_structure->* TO <l_fs_item>.
+      INSERT gw_item INTO TABLE gt_item ASSIGNING <l_fs_item>.
+    ENDAT.
+    ASSIGN COMPONENT <l_fs_intern>-col OF STRUCTURE <l_fs_item>
+           TO <field>.
+    CHECK sy-subrc EQ 0.
+    <field> = <l_fs_intern>-value.
+  ENDLOOP.
+ENDFORM.                    " GET_FILE_DATA
+
+FORM output_excel USING im_objid."导出EXCEL模版 "im_objid接受来自perform语句的cs_objid的值
+  DATA: lwk_object LIKE wwwdatatab, "表WWWDATA的内容,即通过smw0导入的模板的存储信息的表
+        lwk_rc     TYPE sy-subrc,   "函数返回值,ABAP报表之后返回值
+        lwk_ua     TYPE i.          "用于接收動作結果返回的值
+  DATA: lwk_fn     TYPE rlgrap-filename. "用于装载/卸载的局部文件
+  DATA: lwk_filename TYPE string.
+  DATA: lwk_path TYPE string.
+  DATA: lwk_fullpath TYPE string.
+
+****---查询模板---***
+  SELECT SINGLE relid objid  "relid: IMPORT/EXPORT 记录中的区域; objid:对象名
+    FROM wwwdata             "存储 WWW 对象的 INDX 类型表
+    INTO CORRESPONDING FIELDS OF lwk_object
+    WHERE srtf2 = 0          "srtf2表示EXPORT/IMPORT 数据表中的下个记录计数器
+      AND objid = im_objid.                                 "smw0里对象名称
+
+  IF sy-subrc <> 0 OR lwk_object-objid = space . "如果没有找到模板或者模板文件名为空
+    MESSAGE e000(zco01) WITH im_objid.  "004:模板文件&1不存在，请使用[SWM0]加载!
+    STOP.  "停止事件
+  ENDIF.
+
+*---调用SAP操作window文件的事件（CL_GUI_FRONTEND_SERVICES），描述文件存放的路经，文件名，指定打开的文件，指定写入的文件---*
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog  "打开或者取得数据的文件地址的对话框
+    EXPORTING
+      window_title         = gwk_title       "对话框的标题
+      default_extension    = gwk_extension   "默认的文件后缀名
+      default_file_name    = gwk_filename    "默认打开的文件名
+      initial_directory    = gwk_directory   "初始化的目录
+*     multiselection       = 'X'       "是否可以同时打开多个文件
+      file_filter          = cl_gui_frontend_services=>filetype_excel "文件打开的filter：文件类型excel
+    CHANGING
+      filename             = lwk_filename  "你所打开的文件名字列表
+      path                 = lwk_path  "返回值,如果成功打开了,为1
+      fullpath             = lwk_fullpath
+      user_action          = lwk_ua  "動作結果,成功返回值0.
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      not_supported_by_gui = 3
+*     INVALID_DEFAULT_FILE_NAME = 4
+      OTHERS               = 5.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ELSE.
+    CHECK lwk_ua = 0.
+
+    lwk_fn  = lwk_filename.
+
+***---下载模板---***
+    CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'  "从服务器下载文件
+      EXPORTING
+        key         = lwk_object
+        destination = lwk_fn   "文件名
+      IMPORTING
+        rc          = lwk_rc.  "系统返回值，下载成功则返回0.
+
+    IF lwk_rc <> 0.
+      MESSAGE e001(zco01) WITH im_objid.
+      STOP.
+    ENDIF.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM check_data.
+  DATA:BEGIN OF wa_marc,
+         matnr LIKE marc-matnr,
+         werks LIKE marc-werks,
+       END OF wa_marc.
+  DATA:it_marc LIKE wa_marc OCCURS 0.
+
+  DATA:BEGIN OF wa_t001w,
+         werks LIKE t001w-werks,
+         bwkey LIKE t001w-bwkey,
+       END OF wa_t001w,
+       it_t001w LIKE wa_t001w OCCURS 0.
+
+  DATA:BEGIN OF wa_mara,
+         matnr LIKE marc-matnr,
+         mbrsh LIKE mara-mbrsh, "行业类型
+         mtart LIKE mara-mtart, "物料类型
+       END OF wa_mara,
+       it_mara LIKE wa_mara OCCURS 0.
+
+  "将物料号补前导0
+  LOOP AT gt_item INTO gw_item.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        input  = gw_item-matnr
+      IMPORTING
+        output = gw_item-matnr.
+    MODIFY gt_item FROM gw_item.
+  ENDLOOP.
+
+  SELECT matnr werks INTO TABLE it_marc FROM marc
+     FOR ALL ENTRIES IN gt_item
+    WHERE matnr EQ gt_item-matnr
+      AND werks EQ gt_item-werks
+      AND lvorm EQ space.
+
+  SELECT werks bwkey INTO TABLE it_t001w FROM t001w
+      FOR ALL ENTRIES IN gt_item
+      WHERE werks EQ gt_item-werks.
+
+  SELECT matnr mbrsh mtart INTO TABLE it_mara FROM mara
+         FOR ALL ENTRIES IN gt_item
+     WHERE matnr EQ gt_item-matnr
+       AND lvorm EQ space.
+
+  LOOP AT  gt_item INTO gw_item.
+*判断是否存在物料
+    READ TABLE it_marc INTO wa_marc WITH KEY matnr = gw_item-matnr werks = gw_item-werks.
+    IF  sy-subrc NE 0.
+      CONCATENATE '此物料'gw_item-matnr'在工厂'gw_item-werks'不存在！请检查！' INTO gw_item-result .
+      gw_item-biaoshi = 'X'.
+      gw_item-iconname = '@5C@'."红色：
+    ELSE.
+      CONCATENATE '此物料工厂信息正确' ''  INTO gw_item-result .
+      gw_item-iconname = '@5B@'."绿色：
+    ENDIF.
+    "获取估价范围
+    READ TABLE it_t001w INTO wa_t001w WITH KEY werks =  gw_item-werks.
+    IF sy-subrc EQ 0.
+      gw_item-bwkey  = wa_t001w-bwkey.
+    ENDIF.
+
+    "获取物料主数据信息
+    READ TABLE it_mara INTO wa_mara WITH KEY matnr = gw_item-matnr.
+    IF sy-subrc EQ 0.
+      gw_item-mbrsh = wa_mara-mbrsh.
+      gw_item-mtart = wa_mara-mtart.
+    ENDIF.
+
+    MODIFY gt_item FROM gw_item.
+  ENDLOOP .
+ENDFORM.                    "CHECK_DATA
+
+*&---------------------------------------------------------------------*
+*&      Form  save_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM save_data.
+  DATA:p_vkorg0 LIKE mvke-vkorg,
+       p_disnso LIKE mvke-vtweg,
+       p_bwkey  LIKE t001k-bwkey.
+  DATA: gt_marc TYPE TABLE OF marc.
+  DATA:msg_txt1(200) TYPE c.
+*  DATA: gt_mara TYPE TABLE OF mara.
+  DATA : str_clientdata          LIKE          bapi_mara_ga,
+         str_plantdata           LIKE          bapi_marc_ga,
+         str_forecastparameters  LIKE          bapi_mpop_ga,
+         str_planningdata        LIKE          bapi_mpgd_ga,
+         str_storagelocationdata LIKE          bapi_mard_ga,
+         str_valuationdata       LIKE          bapi_mbew_ga,
+         str_salesdata           LIKE          bapi_mvke_ga,
+         str_warehousenumberdata LIKE          bapi_mlgn_ga,
+         str_storagetypedata     LIKE          bapi_mlgt_ga,
+         str_prtdata             LIKE          bapi_mfhm_ga,
+         str_lifovaluationdata   LIKE          bapi_myms_ga,
+         tab_get_all_r           TYPE TABLE OF bapireturn.
+  DATA:tab_materialdescription  TYPE TABLE OF bapi_makt_ga WITH HEADER LINE,
+       tab_unitsofmeasure       TYPE TABLE OF bapi_marm_ga,
+       tab_internationalartnos  TYPE TABLE OF bapi_mean_ga,
+       tab_materiallongtext     TYPE TABLE OF bapi_mltx_ga,
+       tab_taxclassifications   TYPE TABLE OF bapi_mlan_ga,
+       tab_materialdescription1 TYPE TABLE OF bapi_makt WITH HEADER LINE.
+  DATA: BEGIN OF tab_head.
+      INCLUDE STRUCTURE bapimathead.
+  DATA: END OF tab_head.
+  DATA: BEGIN OF tab_plantdata.
+      INCLUDE STRUCTURE bapi_marc.
+  DATA: END OF tab_plantdata.
+  DATA: BEGIN OF tab_plantdatax.
+      INCLUDE STRUCTURE bapi_marcx.
+  DATA: END OF tab_plantdatax.
+  DATA: BEGIN OF tab_client.
+      INCLUDE STRUCTURE bapi_mara.
+  DATA: END OF tab_client.
+  DATA: BEGIN OF tab_clientx.
+      INCLUDE STRUCTURE bapi_marax.
+  DATA: END OF tab_clientx.
+  DATA: BEGIN OF tab_salesdata.
+      INCLUDE STRUCTURE bapi_mvke.
+  DATA: END OF tab_salesdata.
+  DATA: BEGIN OF tab_salesdatax.
+      INCLUDE STRUCTURE bapi_mvkex.
+  DATA: END OF tab_salesdatax.
+  DATA : BEGIN OF tab_return.
+      INCLUDE STRUCTURE bapiret2 .
+  DATA : END OF tab_return.
+  DATA : tab_return_msgs TYPE TABLE OF bapi_matreturn2 .
+  DATA: tab_forecast   LIKE bapi_mpop,
+        tab_forecastx  LIKE bapi_mpopx,
+        tab_plangdata  LIKE bapi_mpgd,
+        tab_plangdatax LIKE bapi_mpgdx,
+        tab_stlocdata  LIKE bapi_mard,
+        tab_stlocdatax LIKE bapi_mardx,
+        tab_valdata    LIKE bapi_mbew,
+        tab_valdatax   LIKE bapi_mbewx,
+        tab_warehouse  LIKE bapi_mlgn,
+        tab_warehousex LIKE bapi_mlgnx,
+        tab_stortyped  LIKE bapi_mlgt,
+        tab_stortypedx LIKE bapi_mlgtx.
+*  DATA gt_makt TYPE TABLE OF bapi_makt.
+  DATA: gv_len      TYPE i,
+        view,
+        counter     TYPE sy-index,
+        gv_i        TYPE i,
+        gv_msg(200).
+  FIELD-SYMBOLS:
+    <fs_marc>  TYPE bapi_mara_ga, "MARC,
+    <f1>       TYPE any,
+    <f2>       TYPE any,
+    <fms>      TYPE bapi_matreturn2,
+    <fstruct>  TYPE any,
+    <fstructx> TYPE any.
+
+****************消息提示******************
+  CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+    EXPORTING
+      text = '开始批导数据'.
+***********处理数据************************
+
+  LOOP AT  gt_item INTO gw_item  WHERE biaoshi EQ space.
+
+    tab_head-cost_view = 'G'.
+    tab_head-material = gw_item-matnr.
+    tab_head-ind_sector = gw_item-mbrsh.
+    tab_head-matl_type =  gw_item-mtart..
+
+    tab_valdata-val_area    = gw_item-bwkey.
+    tab_valdata-plndprice1  = gw_item-zplp1 .
+    tab_valdata-plndprdate1 = gw_item-zpld1.
+
+    tab_valdatax-val_area    = gw_item-bwkey.
+    tab_valdatax-plndprice1  = 'X' .
+    tab_valdatax-plndprdate1 = 'X'.
+
+
+    CALL FUNCTION 'BAPI_MATERIAL_SAVEDATA'
+      EXPORTING
+        headdata       = tab_head
+*       clientdata     = tab_client
+*       clientdatax    = tab_clientx
+*       plantdata      = tab_plantdata
+*       plantdatax     = tab_plantdatax
+*       forecastparameters  = tab_forecast
+*       forecastparametersx = tab_forecastx
+*       planningdata   = tab_plangdata
+*       planningdatax  = tab_plangdatax
+*       storagelocationdata = tab_stlocdata
+*       storagelocationdatax = tab_stlocdatax
+        valuationdata  = tab_valdata
+        valuationdatax = tab_valdatax
+*       warehousenumberdata = tab_warehouse
+*       warehousenumberdatax = tab_warehousex
+*       salesdata      = tab_salesdata
+*       salesdatax     = tab_salesdatax
+*       storagetypedata     = tab_stortyped
+*       storagetypedatax    = tab_stortypedx
+*       FLAG_ONLINE    = ' '
+*       FLAG_CAD_CALL  = ' '
+*       NO_DEQUEUE     = ' '
+      IMPORTING
+        return         = tab_return
+      TABLES
+*       materialdescription = tab_materialdescription1
+*       UNITSOFMEASURE =
+*       UNITSOFMEASUREX     =
+*       INTERNATIONALARTNOS =
+*       MATERIALLONGTEXT    =
+*       TAXCLASSIFICATIONS  =
+        returnmessages = tab_return_msgs.
+    LOOP AT  tab_return_msgs ASSIGNING <fms> WHERE type EQ 'E'OR type EQ 'A'.
+      EXIT.
+    ENDLOOP.
+    IF sy-subrc  <> 0.
+      CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+        EXPORTING
+          wait = 'X'.
+      CONCATENATE'计划价格修改成功！'   ''INTO gw_item-result.
+      gw_item-iconname = '@5B@'."绿色：
+    ELSE.
+      CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+      gw_item-result = '修改失败，'.
+      LOOP AT tab_return_msgs ASSIGNING <fms> WHERE type EQ 'E' OR type EQ 'A'.
+        gv_msg = <fms>.
+        CONCATENATE  gw_item-result gv_msg INTO gw_item-result.
+      ENDLOOP.
+      gw_item-iconname = '@5C@'."红色：
+    ENDIF.
+    MODIFY gt_item FROM gw_item.
+  ENDLOOP.
+
+ENDFORM.                    "save_data
+
+*&---------------------------------------------------------------------*
+*&      Form  output_log
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM output_log .
+  DATA : col_pos TYPE i VALUE 1.
+
+  CLEAR:it_fieldcat,wa_fieldcat.
+
+  gs_layout-zebra = 'X'.
+  gs_layout-cwidth_opt = 'X'."
+
+  PERFORM fieldcat_int USING col_pos  'MATNR'   ' '   '物料号'          ''  'MATNR' 'MARA' ''.
+  PERFORM fieldcat_int USING col_pos  'WERKS'   ' '   '工厂'   ''  '' '' ''  .
+  PERFORM fieldcat_int USING col_pos  'ZPLP1'   ' '   '计划价格1'   ''  '' '' ''  .
+  PERFORM fieldcat_int USING col_pos  'ZPLD1'   ' '   '计划价格 1 开始有效的日期'   ''  '' '' ''  .
+  PERFORM fieldcat_int USING col_pos  'RESULT'   ' '   '结果信息'   ''  '' '' ''  .
+  PERFORM fieldcat_int USING col_pos  'ICONNAME'   ' '   '结果标识'   ''  '' '' ''  .
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program       = sy-repid
+      is_layout_lvc            = gs_layout
+      it_fieldcat_lvc          = it_fieldcat
+      i_save                   = 'A'
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'ALV_USER_COMMAND'
+    TABLES
+      t_outtab                 = gt_item
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM.                    " OUTPUT_LOG
+
+*&---------------------------------------------------------------------*
+*&      Form  set_pf_status1
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->RT_EXTAB   text
+*----------------------------------------------------------------------*
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+
+  DATA: wa_extab TYPE slis_extab.
+
+  SET PF-STATUS 'ZRPCO002_STATUS' EXCLUDING rt_extab.
+
+ENDFORM.                    "set_pf_status1
+
+FORM alv_user_command USING r_ucomm LIKE sy-ucomm  rs_selfield TYPE slis_selfield.
+*   获取ALV中的鼠标勾选记录
+  DATA: l_grid TYPE REF TO cl_gui_alv_grid.
+  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+    IMPORTING
+      e_grid = l_grid.
+
+  CALL METHOD l_grid->check_changed_data.
+  rs_selfield-refresh = 'X'.
+  rs_selfield-col_stable = 'X'.
+  rs_selfield-row_stable = 'X'.
+
+  CASE r_ucomm.
+    WHEN 'C_DAORU'.
+      PERFORM save_data."保存数据
+
+    WHEN '&REFRESH'.
+      PERFORM get_data.
+  ENDCASE.
+
+
+ENDFORM.                    "alv_user_command
+*&---------------------------------------------------------------------*
+*&      Form  FIELDCAT_INT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_COL_POS  text
+*      -->P_1122   text
+*      -->P_1123   text
+*      -->P_1124   text
+*      -->P_1125   text
+*      -->P_1126   text
+*      -->P_1127   text
+*      -->P_1128   text
+*----------------------------------------------------------------------*
+FORM fieldcat_int  USING   p_col_pos         " 1
+                            p_fieldname       " 2
+                            p_key             " 3
+                            p_seltext_l       " 4
+                            p_zero
+                            p_filename
+                            p_talbename
+                            p_outputle   .
+
+  wa_fieldcat-col_pos       = p_col_pos.
+  wa_fieldcat-fieldname     = p_fieldname.
+  wa_fieldcat-key           = p_key.
+  wa_fieldcat-coltext     = p_seltext_l.
+  wa_fieldcat-no_zero        = p_zero.
+  wa_fieldcat-ref_field   = p_filename.
+  wa_fieldcat-ref_table    = p_talbename.
+  wa_fieldcat-tipddictxt       = 'L'.
+
+  APPEND wa_fieldcat TO it_fieldcat.
+  p_col_pos = p_col_pos + 1.
+  CLEAR: wa_fieldcat.
+ENDFORM.                    " FIELDCAT_INT
+
+*&---------------------------------------------------------------------*
+*&      Form  get_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_data.
+*********取自建表数据**************************
+  SELECT a~matnr
+         a~bwkey
+         b~werks
+         a~zplp1
+         a~zpld1
+     INTO CORRESPONDING FIELDS OF TABLE gt_alv FROM mbew AS a
+    JOIN marc AS b ON a~matnr EQ b~matnr
+    JOIN t001w AS c ON a~bwkey EQ c~bwkey AND b~werks EQ c~werks
+   WHERE a~matnr IN s_matnr.
+  SORT gt_alv BY matnr .
+
+ENDFORM.                    "get_data
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_alv
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_alv.
+  DATA : col_pos TYPE i VALUE 1.
+
+  CLEAR:it_fieldcat,wa_fieldcat.
+
+  gs_layout-zebra = 'X'.
+  gs_layout-cwidth_opt = 'X'."
+  gs_layout-stylefname = 'FIELD_STYLE'. " 将内表中的字段名存入显示格式
+  gs_layout-box_fname        = 'SEL'.
+
+*  wa_events-name = 'CALLER_EXIT'.
+*  wa_events-form = 'CALLER_EXIT'.
+*  APPEND wa_events TO it_events.
+
+  PERFORM fieldcat_int USING col_pos  'MATNR'   ' '   '物料号'          ''  'MATNR' 'MARA' ''.
+  PERFORM fieldcat_int USING col_pos  'WERKS'   ' '   '工厂'   ''  '' '' ''  .
+  PERFORM fieldcat_int USING col_pos  'ZPLP1'   ' '   '计划价格1'   ''  '' '' ''  .
+  PERFORM fieldcat_int USING col_pos  'ZPLD1'   ' '   '计划价格 1 开始有效的日期'   ''  '' '' ''  .
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program = sy-repid
+      is_layout_lvc      = gs_layout
+      it_fieldcat_lvc    = it_fieldcat
+*     it_events          = it_events
+      i_save             = 'A'
+    TABLES
+      t_outtab           = gt_alv
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM.                    "get_alv

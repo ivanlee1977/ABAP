@@ -1,0 +1,226 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO008F01
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+
+  DATA lt_out LIKE gw_out OCCURS 0 WITH HEADER LINE.
+
+  SELECT  gjahr
+          perde
+          absmg
+          ww001
+     FROM ce11000
+     INTO CORRESPONDING FIELDS OF TABLE lt_out
+    WHERE bukrs = p_bukrs
+      AND gjahr IN (p_gjahr,p_gjahr1)
+      AND paledger EQ '02'.
+
+*  将1098 10-90 99设置成1099（其他）
+
+  LOOP AT lt_out.
+    IF  strlen( lt_out-ww001 ) = '2' OR lt_out-ww001 = '1098' .
+      lt_out-ww001 = '1099'.
+    ENDIF.
+    COLLECT lt_out INTO gt_out.
+    CLEAR: lt_out-ww001.
+    COLLECT lt_out INTO gt_out_col.
+    CLEAR lt_out.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  DATA:ls_key   TYPE wwwdatatab,
+       lv_subrc TYPE sy-subrc.
+  DATA lv_file LIKE rlgrap-filename.
+
+  CONCATENATE 'C:\CO\' sy-title '-'   sy-datum '.xls' INTO lv_file.
+
+  ls_key-relid = 'MI'.
+  ls_key-objid = gcst_excel_template.
+  CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'
+    EXPORTING
+      key         = ls_key
+      destination = lv_file
+    IMPORTING
+      rc          = lv_subrc.
+  IF lv_subrc <> 0.
+    MESSAGE '下载模板出错，请检查，谢谢' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+
+***填充EXCEL数据
+  PERFORM frm_filldata_excel USING lv_file.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FILLDATA_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_FILE  text
+*----------------------------------------------------------------------*
+FORM frm_filldata_excel  USING iv_file TYPE rlgrap-filename.
+*******数据定义*******
+  DATA:lo_excel     TYPE ole2_object,
+       lo_workbooks TYPE ole2_object,
+       lo_workbook  TYPE ole2_object,
+       lo_sheet     TYPE ole2_object,
+       lo_range     TYPE ole2_object,
+       lo_cell      TYPE ole2_object,
+       lo_cell1     TYPE ole2_object.
+  DATA lv_file LIKE rlgrap-filename.
+
+  DATA lv_row TYPE i.
+  DATA lv_col TYPE i.
+  DATA:lv_times TYPE i.
+  DATA:lv_row_c TYPE i,
+       lv_row_l TYPE i.
+
+  DEFINE mac_fill_cell.
+    CALL METHOD OF lo_sheet 'CELLS' = lo_cell
+      EXPORTING
+        #1 = &1
+        #2 = &2.
+    SET PROPERTY OF lo_cell 'VALUE' = &3.
+  END-OF-DEFINITION.
+
+  DATA:lv_text_ny TYPE string.
+  DATA:lt_data LIKE gt_out OCCURS 0 WITH HEADER LINE.
+  DATA:lv_bezek LIKE t25a0-bezek.
+*******程序主体*******
+
+*填充excel
+  CREATE OBJECT lo_excel 'EXCEL.APPLICATION'.
+  CALL METHOD OF lo_excel 'WORKBOOKS' = lo_workbooks.
+  CALL METHOD OF lo_workbooks 'OPEN' = lo_workbook EXPORTING #1 = iv_file.
+  CALL METHOD OF lo_workbook 'WORKSHEETS' = lo_sheet EXPORTING #1 = 1.
+
+***年月
+  CONCATENATE p_gjahr1 '年--'  p_gjahr '年'  INTO lv_text_ny.
+  mac_fill_cell 2 1  lv_text_ny.  "年月
+
+  SORT gt_out BY ww001 gjahr perde.
+
+  APPEND LINES OF gt_out TO lt_data.
+  SORT lt_data BY ww001 gjahr perde.
+  DELETE ADJACENT DUPLICATES FROM lt_data COMPARING ww001.
+
+  lv_row = 5.
+  lv_col = 1.
+  DESCRIBE TABLE lt_data LINES lv_times.
+*  lv_times = lv_times - 1.
+  DO lv_times TIMES.
+    CALL METHOD OF lo_sheet 'Cells' = lo_cell   "起始单元格
+    EXPORTING #1 = 5
+              #2 = 1.
+
+    CALL METHOD OF lo_sheet 'Cells' = lo_cell1   "终止单元格
+      EXPORTING #1 = 7
+                #2 = 16.
+
+    CALL METHOD OF lo_sheet 'Range' = lo_range   "生成区域
+      EXPORTING
+        #1 = lo_cell
+        #2 = lo_cell1.
+
+    CALL METHOD OF lo_range 'Select' . "选中区域
+    CALL METHOD OF lo_range 'Copy'. "复制
+
+    lv_row = lv_row + 3.
+    CALL METHOD OF lo_sheet 'Cells' = lo_cell   "起始单元格
+       EXPORTING #1 = lv_row
+                 #2 = 1.
+    lv_row = lv_row + 2.
+    CALL METHOD OF lo_sheet 'Cells' = lo_cell1   "终止单元格
+      EXPORTING #1 = lv_row
+                #2 = 16.
+    CALL METHOD OF lo_sheet 'Range' = lo_range   "生成区域
+      EXPORTING
+        #1 = lo_cell
+        #2 = lo_cell1.
+    CALL METHOD OF lo_range 'Insert'.
+    lv_row = lv_row - 2.
+  ENDDO.
+
+*  "数值
+  lv_row = 5.
+  LOOP AT lt_data.
+    lv_row = 3 * sy-tabix + 2.
+    SELECT SINGLE bezek INTO lv_bezek FROM t25a0 WHERE spras = sy-langu AND ww001 = lt_data-ww001.
+    mac_fill_cell lv_row 1  lv_bezek.  "产品分类
+    lv_row_l = lv_row + 1.
+    lv_row_c = lv_row + 2.
+    mac_fill_cell lv_row_l 2  p_gjahr1.  "比较年
+    mac_fill_cell lv_row_c 2  p_gjahr.   "当前年
+    LOOP AT gt_out WHERE ww001 = lt_data-ww001.
+      lv_col = 2 + gt_out-perde.
+      CASE gt_out-gjahr.
+        WHEN p_gjahr1.
+          mac_fill_cell lv_row_l lv_col gt_out-absmg.  "
+        WHEN p_gjahr.
+          mac_fill_cell lv_row_c lv_col gt_out-absmg.  "
+        WHEN OTHERS.
+      ENDCASE.
+    ENDLOOP.
+  ENDLOOP.
+
+*  填充合计
+  SORT gt_out_col BY gjahr perde.
+
+  lv_row = lv_row_c + 1.
+  mac_fill_cell lv_row 1  '发货总计'.  "产品分类
+  lv_row_l = lv_row + 1.
+  lv_row_c = lv_row + 2.
+  mac_fill_cell lv_row_l 2  p_gjahr1.  "比较年
+  mac_fill_cell lv_row_c 2  p_gjahr.   "当前年
+  LOOP AT gt_out_col.
+    lv_col = 2 + gt_out_col-perde.
+    CASE gt_out_col-gjahr.
+      WHEN p_gjahr1.
+        mac_fill_cell lv_row_l lv_col gt_out_col-absmg.  "
+      WHEN p_gjahr.
+        mac_fill_cell lv_row_c lv_col gt_out_col-absmg.  "
+      WHEN OTHERS.
+    ENDCASE.
+  ENDLOOP.
+
+
+  CALL METHOD OF lo_sheet 'CELLS' = lo_cell EXPORTING #1 = 1 #2 = 1.
+  CALL METHOD OF lo_cell 'SELECT'.
+  SET PROPERTY OF lo_excel 'CutCopyMode' = 0.
+
+  CALL METHOD OF lo_workbook 'SAVE'.
+  SET PROPERTY OF lo_excel 'VISIBLE' = 1.
+  FREE OBJECT:lo_excel,lo_workbooks,lo_workbook,lo_sheet,lo_range,lo_cell.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_CHECK_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_check_data .
+  CHECK sy-ucomm = 'ONLI'.
+  IF p_gjahr1 >= p_gjahr.
+    MESSAGE '对比年度需小于会计年度' TYPE 'E'.
+  ENDIF.
+ENDFORM.

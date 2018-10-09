@@ -1,0 +1,325 @@
+*&---------------------------------------------------------------------*
+*& Report ZRPCO010
+*& 创建者(公司)/日期： PFT/20170822
+*& 程序描述:销售研制费用明细表
+*&---------------------------------------------------------------------*
+*& 版本     修改者(公司)     日期         修改描述
+*& 1.0.0    PFT           20170822     创建程序
+*&---------------------------------------------------------------------*
+REPORT zrpco010.
+
+INCLUDE zalv.
+
+TABLES: faglflext.
+
+DATA: BEGIN OF gt_alv OCCURS 0,
+        box(1),
+        rbukrs LIKE faglflext-rbukrs, "公司代码
+        rfarea LIKE faglflext-rfarea, "费用类别
+        fkbtx  LIKE tfkbt-fkbtx, "费用描述
+        racct  LIKE faglflext-racct,  "会计科目
+        zxh    TYPE sy-tabix,
+        zdx    TYPE c LENGTH 20,      "大项
+        zfyxm  TYPE c LENGTH 20,      "费用项目
+        col01  LIKE faglflext-hsl01,
+        col02  LIKE faglflext-hsl01,
+        col03  LIKE faglflext-hsl01,
+        col04  LIKE faglflext-hsl01,
+        col05  LIKE faglflext-hsl01,
+        col06  LIKE faglflext-hsl01,
+        col07  LIKE faglflext-hsl01,
+        col08  LIKE faglflext-hsl01,
+        col09  LIKE faglflext-hsl01,
+        col10  LIKE faglflext-hsl01,
+        col11  LIKE faglflext-hsl01,
+        col12  LIKE faglflext-hsl01,
+        zcoll  LIKE faglflext-hsl01, "合计
+      END OF gt_alv.
+DATA: BEGIN OF gt_xh OCCURS 0,
+        rbukrs LIKE faglflext-rbukrs, "公司代码
+        rfarea LIKE faglflext-rfarea, "费用类别
+        zxh    TYPE sy-tabix,
+        fkbtx  LIKE tfkbt-fkbtx, "费用描述
+        zdx    TYPE c LENGTH 20,      "大项
+        racct  LIKE faglflext-racct,  "会计科目
+      END OF gt_xh.
+
+DATA: gt_faglflext LIKE faglflext OCCURS 0 WITH HEADER LINE."FAGLFLEXT数据
+DATA: gt_skat LIKE skat OCCURS 0 WITH HEADER LINE."会计科目主数据
+DATA: gt_tfkbt LIKE tfkbt OCCURS 0 WITH HEADER LINE, "功能范围描述
+      gt_t001  LIKE t001 OCCURS 0 WITH HEADER LINE. "编制单位
+
+
+************************************************************************
+*选择屏幕
+************************************************************************
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+SELECT-OPTIONS: s_bukrs FOR faglflext-rbukrs OBLIGATORY MODIF ID buk,"公司代码
+                s_datum FOR sy-datum+0(6) OBLIGATORY ,"年度期间
+                s_rfarea FOR faglflext-rfarea OBLIGATORY," 费用类别
+                s_prctr FOR faglflext-prctr.         "利润中心
+SELECTION-SCREEN END OF BLOCK b1.
+
+************************************************************************
+*INITIALIZATION.
+************************************************************************
+INITIALIZATION.
+  DATA: lv_datum LIKE sy-datum.
+  s_datum-sign = 'I'.
+  s_datum-option = 'BT'.
+  CALL FUNCTION 'CCM_GO_BACK_MONTHS'
+    EXPORTING
+      currdate   = sy-datum
+      backmonths = '011'
+    IMPORTING
+      newdate    = lv_datum.
+
+  s_datum-low = lv_datum+0(6).
+  s_datum-high = sy-datum+0(6).
+  APPEND s_datum.
+  CLEAR: lv_datum.
+************************************************************************
+* AT SELECTION-SCREEN OUTPUT
+************************************************************************
+AT SELECTION-SCREEN OUTPUT.
+************************************************************************
+* AT SELECTION-SCREEN
+************************************************************************
+AT SELECTION-SCREEN.
+************************************************************************
+* START-OF-SELECTION
+************************************************************************
+START-OF-SELECTION.
+
+  PERFORM frm_get_data."取数
+  PERFORM sub_build_fieldcat.
+  PERFORM sub_build_events.
+  PERFORM sub_build_layout1.
+*  PERFORM sub_set_soft1 USING '1' 'RBUKRS' 'X' ''.
+*  PERFORM sub_set_soft1 USING '2' 'RFAREA' 'X' ''.
+  PERFORM sub_set_soft1 USING '1' 'ZXH' 'X' ''.
+  PERFORM sub_set_soft1 USING '2' 'ZDX' 'X' ''.
+  PERFORM sub_display_alv3 TABLES gt_alv USING '' ''.
+
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA: lv_gjahr_low  LIKE faglflext-ryear, "查询起始年度
+        lv_gjahr_high LIKE faglflext-ryear, "查询截止年度
+        lv_monat_low  TYPE monat. "查询期间
+
+  REFRESH: gt_faglflext,gt_alv,gt_skat.
+  CLEAR: lv_gjahr_low,lv_gjahr_high.
+*  根据选择屏幕从表FALFLEXT中取出科目RACCT为6602开头的数据
+  lv_gjahr_low = s_datum-low+0(4).
+  lv_gjahr_high = s_datum-high+0(4).
+  lv_monat_low = s_datum-low+4(2).
+
+  SELECT * INTO TABLE gt_faglflext
+    FROM faglflext
+    WHERE ryear BETWEEN lv_gjahr_low AND lv_gjahr_high
+      AND rbukrs IN s_bukrs
+      AND rfarea IN s_rfarea
+      AND racct LIKE '6602%'
+      and prctr in s_prctr.
+  SORT gt_faglflext BY ryear racct.
+
+  SELECT * INTO TABLE gt_skat FROM skat WHERE spras = sy-langu AND ktopl = '1000'.
+  SORT gt_skat BY saknr.
+  SELECT * INTO TABLE gt_tfkbt FROM tfkbt WHERE spras = sy-langu AND fkber IN s_rfarea.
+  SORT gt_tfkbt BY fkber.
+  SELECT * INTO TABLE gt_t001 FROM t001 WHERE bukrs IN s_bukrs.
+  SORT gt_t001 BY bukrs.
+
+  DATA: lv_index(2),
+        lv_col           TYPE monat,
+        lv_fieldname(18),
+        fieldname(20).
+  DATA: lv_datum LIKE sy-datum,
+        lv_str1  TYPE c LENGTH 20.
+  FIELD-SYMBOLS :<f>      LIKE faglflext-hsl01,
+                 <fs_str> TYPE any,
+                 <dyn_wa> LIKE gt_alv.
+
+  LOOP AT gt_faglflext.
+    CLEAR: gt_alv,lv_index,lv_datum.
+*    gt_alv-rbukrs = gt_faglflext-rbukrs.
+*    gt_alv-rfarea = gt_faglflext-rfarea.
+    gt_alv-racct = gt_faglflext-racct.
+*    READ TABLE gt_tfkbt WITH KEY fkber = gt_faglflext-rfarea.
+*    IF sy-subrc = 0.
+*      gt_alv-fkbtx = gt_tfkbt-fkbtx.
+*    ENDIF.
+*    取费用大项和费用项目
+    READ TABLE gt_skat WITH KEY saknr = gt_faglflext-racct BINARY SEARCH.
+    IF sy-subrc = 0.
+      SPLIT gt_skat-txt50 AT '-' INTO lv_str1 gt_alv-zdx gt_alv-zfyxm.
+    ENDIF.
+    CONCATENATE s_datum-low '01' INTO lv_datum.
+    lv_col = '00'.
+    DO 16 TIMES.
+      lv_index = lv_datum+4(2).
+      lv_col = lv_col + 1.
+      IF lv_datum+0(4) = gt_faglflext-ryear.
+        CONCATENATE 'COL' lv_col INTO fieldname.
+        ASSIGN COMPONENT fieldname OF STRUCTURE gt_alv TO <fs_str>.
+        CONCATENATE 'GT_FAGLFLEXT-HSL' lv_index INTO lv_fieldname.
+        ASSIGN (lv_fieldname) TO <f>.
+        ADD <f> TO <fs_str>.
+        IF lv_index = 12.
+          <fs_str> = <fs_str> + gt_faglflext-hsl13 + gt_faglflext-hsl14 + gt_faglflext-hsl15 + gt_faglflext-hsl16.
+        ENDIF.
+        gt_alv-zcoll = gt_alv-zcoll + <f>.
+      ENDIF.
+      CALL FUNCTION 'RP_CALC_DATE_IN_INTERVAL'
+        EXPORTING
+          date      = lv_datum
+          days      = '00'
+          months    = '01'
+          signum    = '+'
+          years     = '00'
+        IMPORTING
+          calc_date = lv_datum.
+      IF lv_datum+0(4) = lv_gjahr_high AND lv_datum+4(2) > s_datum-high+4(2).
+        EXIT.
+      ENDIF.
+    ENDDO.
+    COLLECT gt_alv.
+    MOVE-CORRESPONDING gt_alv TO gt_xh.
+*    gt_xh-fkbtx = gt_tfkbt-fkbtx.
+    COLLECT gt_xh.
+    CLEAR: gt_faglflext.
+  ENDLOOP.
+
+  SORT gt_alv BY racct.
+  SORT gt_xh BY racct.
+
+  DATA: lv_tabix TYPE sy-tabix.
+  LOOP AT gt_xh.
+*    AT NEW rfarea.
+*      CLEAR: lv_tabix.
+*    ENDAT.
+    lv_tabix = lv_tabix + 1.
+    gt_xh-zxh = lv_tabix.
+    MODIFY gt_xh.
+  ENDLOOP.
+
+  LOOP AT gt_alv.
+    READ TABLE gt_xh WITH KEY rbukrs = gt_alv-rbukrs rfarea = gt_alv-rfarea zdx = gt_alv-zdx .
+    IF sy-subrc = 0.
+      gt_alv-zxh = gt_xh-zxh.
+    ENDIF.
+    MODIFY gt_alv TRANSPORTING zxh.
+    CLEAR: gt_alv.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_fieldcat .
+  DATA: lv_datum     LIKE sy-datum.
+  DATA: lt_num          TYPE i,
+        lv_colname(20),
+        lv_colname1(20),
+        lv_index        TYPE monat.
+  REFRESH:g_it_fieldcat1.
+*  PERFORM sub_set_fieldcat1 USING 'X' 'RBUKRS'  '公司代码' ''  '' ''  ''  ''  ''  '' '' '' .
+*  PERFORM sub_set_fieldcat1 USING 'X' 'FKBTX'  '费用类别' ''  '' ''  ''  ''  ''  '' '' '' .
+  PERFORM sub_set_fieldcat1 USING 'X' 'ZXH'    '序号'     ''  '' ''  ''  ''  ''  '' '' '' .
+  PERFORM sub_set_fieldcat1 USING 'X' 'ZDX'    '大项'     ''  '' ''  ''  ''  ''  '' '' '' .
+  PERFORM sub_set_fieldcat1 USING 'X' 'ZFYXM'  '费用项目' ''  '' ''  ''  ''  ''  '' '' '' .
+
+  CONCATENATE s_datum-low '01' INTO lv_datum.
+  lv_index = '00'.
+  DO 12 TIMES." 根据条件动态生成列
+    lv_index = lv_index + 1.
+    CONCATENATE 'COL' lv_index INTO lv_colname.
+    CONCATENATE lv_datum+0(4) '年' lv_datum+4(2) '月' INTO lv_colname1.
+    PERFORM sub_set_fieldcat1 USING 'X' lv_colname lv_colname1 'X'  '' ''  ''  ''  ''  '' '' '' .
+    CALL FUNCTION 'RP_CALC_DATE_IN_INTERVAL'
+      EXPORTING
+        date      = lv_datum
+        days      = '00'
+        months    = '01'
+        signum    = '+'
+        years     = '00'
+      IMPORTING
+        calc_date = lv_datum.
+  ENDDO.
+  PERFORM sub_set_fieldcat1 USING 'X' 'ZCOLL' '合计' 'X'  '' ''  ''  ''  ''  '' '' '' .
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_EVENTS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_events .
+  REFRESH g_it_events.
+  g_it_events-name = 'TOP_OF_PAGE'.
+  g_it_events-form = 'FRM_TOP_OF_PAGE'.
+  APPEND g_it_events.
+  CLEAR g_it_events.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_top_of_page .
+  DATA:lt_list TYPE slis_t_listheader WITH HEADER LINE.
+  DATA: lv_lines TYPE i."公司代码 行数
+
+*  判断公司代码有几个
+  lv_lines = lines( gt_t001 ).
+  CLEAR: lt_list.
+  lt_list-typ = 'H'.
+  LOOP AT gt_tfkbt.
+    IF lt_list-info IS INITIAL.
+      lt_list-info = gt_tfkbt-fkbtx.
+    ELSE.
+      CONCATENATE lt_list-info '、' gt_tfkbt-fkbtx INTO lt_list-info.
+    ENDIF.
+    CLEAR: gt_tfkbt.
+  ENDLOOP.
+  CONCATENATE lt_list-info '明细表' INTO lt_list-info.  CONDENSE lt_list-info.
+  APPEND lt_list.
+
+  CLEAR lt_list.
+  lt_list-typ = 'S'.
+  lt_list-key = '编制单位：'.
+  IF lv_lines = '1'.
+    READ TABLE gt_t001 INDEX 1.
+    IF sy-subrc = 0.
+      lt_list-info = gt_t001-butxt.
+    ENDIF.
+  ELSE.
+    lt_list-info = '深圳雷赛'.
+  ENDIF.
+  APPEND lt_list.
+  CLEAR lt_list.
+
+  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+    EXPORTING
+      it_list_commentary = lt_list[].
+ENDFORM. " FRM_TOP_OF_PAGE

@@ -1,0 +1,149 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPMM001_F01
+*&---------------------------------------------------------------------*
+
+
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+
+  DATA: wa_extab TYPE slis_extab.
+
+  SET PF-STATUS '0100' EXCLUDING rt_extab.
+
+ENDFORM.                    "set_pf_status1
+
+FORM alv_user_command USING r_ucomm LIKE sy-ucomm  rs_selfield TYPE slis_selfield.
+
+  DATA: lv_grid TYPE REF TO cl_gui_alv_grid.
+
+  rs_selfield-refresh = 'X'.
+  rs_selfield-col_stable = 'X'.
+  rs_selfield-row_stable = 'X'.
+
+*  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+*    IMPORTING
+*      e_grid = lv_grid.
+*
+*  CALL METHOD lv_grid->check_changed_data( ).
+
+*  CASE r_ucomm.
+*    WHEN 'ZCLICK'.
+*      PERFORM frm_print.
+*    WHEN '&IC1'.
+*      IF rs_selfield-fieldname EQ 'VGBEL' AND rs_selfield-value IS NOT INITIAL.
+*        SET PARAMETER ID 'BES' FIELD rs_selfield-value.
+*        CALL TRANSACTION 'ME23N' AND SKIP FIRST SCREEN.
+*      ENDIF.
+*      IF rs_selfield-fieldname EQ 'VBELN' AND rs_selfield-value IS NOT INITIAL.
+*        SET PARAMETER ID 'VL' FIELD rs_selfield-value.
+*        CALL TRANSACTION 'VL03N' AND SKIP FIRST SCREEN.
+*      ENDIF.
+*  ENDCASE.
+
+
+ENDFORM.                    "alv_user_command
+
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GETDATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_getdata .
+
+  SELECT
+       artnr
+       ww001
+       spart
+       matkl
+       ww005
+       ww006
+       ww003
+       ww007
+       ww008
+       ww009
+       ww004
+       absmg
+       vv002
+       vv001
+       INTO CORRESPONDING FIELDS OF TABLE gt_co
+        FROM ce11000
+        WHERE bukrs = p_bukrs
+          AND gjahr = p_gjahr
+          AND perde IN s_perde
+          AND paledger = '02'
+          AND ( absmg <> '' OR vv001 <> '' )
+
+    .
+
+
+  CHECK gt_co[] IS NOT INITIAL.
+  SORT gt_co BY artnr.
+  LOOP AT gt_co.
+
+    SELECT SINGLE maktx INTO  gt_co-maktx FROM makt  WHERE matnr = gt_co-artnr AND spras = 1.
+    SELECT SINGLE wgbez INTO  gt_co-wgbez FROM t023t WHERE matkl = gt_co-matkl AND spras = 1.
+    SELECT SINGLE vtext INTO  gt_co-vtext FROM tspat WHERE spart = gt_co-spart AND spras = 1.
+    SELECT SINGLE bezek INTO  gt_co-bezek FROM t25a0 WHERE ww001 = gt_co-ww001 AND spras = 1.
+    gt_co-zvv00 = gt_co-vv002 - gt_co-vv001.
+    MODIFY gt_co.
+    COLLECT gt_co INTO gt_co1.
+  ENDLOOP.
+
+ENDFORM.
+
+FORM frm_getfact .
+  g_fieldfcat:
+
+    'ARTNR' '物料代码' 'ARTNR' 'CE11000' ,
+    'MAKTX' '物料描述' 'MAKTX' 'MAKT' ,
+    'WW001' '产品分类' 'WW001' 'CE11000' ,
+    'BEZEK' '产品分类名称' 'BEZEK' 'T25A0' ,
+    'SPART' '产品组' 'SPART' 'CE11000',
+    'VTEXT' '产品组名称' 'VTEXT' 'TSPAT',
+    'MATKL' '物料组' 'MATKL' 'CE11000',
+    'WGBEZ' '物料组名称' 'WGBEZ' 'T023T',
+    'WW005' '产品型号' 'WW005' 'CE11000' ,
+    'WW006' '对应主型号' 'WW006' 'CE11000' ,
+    'WW003' '产品线' 'WW003' 'CE11000' ,
+    'WW007' '系列' 'WW007' 'CE11000' ,
+    'WW008' '子系列' 'WW008' 'CE11000' ,
+    'WW009' '品牌/厂家' 'WW009' 'CE11000' ,
+    'WW004' '新产品类型' 'WW004' 'CE11000' ,
+    'ABSMG' '销售数量' 'ABSMG' 'CE11000' ,
+    'VV002' '销售收入（含税）' 'VV002' 'CE11000' ,
+    'VV001' '销售收入（不含税）' 'VV001' 'CE11000' ,
+    'ZVV00' '销项税额' 'VV001' 'CE11000'
+  .
+  gs_layout-colwidth_optimize = 'X'.
+*  gs_layout-box_fieldname = 'CHK'.
+*  gs_layout-box_tabname = 'gt_co'.
+*  gs_layout-edit = 'X'.
+  gs_layout-zebra = 'X'.
+
+ENDFORM.
+
+FORM frm_show."ALV显示界面
+
+
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'ALV_USER_COMMAND'
+      is_layout                = gs_layout
+      it_fieldcat              = gt_fcat[]
+    TABLES
+      t_outtab                 = gt_co1[]
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM.

@@ -1,0 +1,135 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZFIR_0010_TOP
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  包含                ZFIR_0010_TOP
+*&---------------------------------------------------------------------*
+TABLES: faglflext.
+
+DATA: BEGIN OF gt_alv OCCURS 0 ,
+        box(1),
+        rbukrs      LIKE faglflext-rbukrs, "公司代码
+        ryear       LIKE faglflext-ryear, "会计年度
+        racct       LIKE faglflext-racct, "科目编码
+        txt50       LIKE skat-txt50, "科目名称
+        rtcur       LIKE faglflext-rtcur, "外币名称
+        ktext       LIKE tcurt-ktext, "币别描述
+        fx_qc       TYPE c LENGTH 5, "期初方向
+        wrbtr_qc    TYPE p DECIMALS 2, "期初外币
+        dmbtr_qc    TYPE p DECIMALS 2, "期初金额
+        wrbtr_bqs   TYPE p DECIMALS 2, "本期借方外币
+        dmbtr_bqs   TYPE p DECIMALS 2, "本期借方金额
+        wrbtr_bqh   TYPE p DECIMALS 2, "本期贷方外币
+        dmbtr_bqh   TYPE p DECIMALS 2, "本期贷方金额
+        fx_qm       TYPE c LENGTH 5, "期末方向
+        wrbtr_qm    TYPE p DECIMALS 2, "期末外币
+        dmbtr_qm    TYPE p DECIMALS 2, "期末金额
+        dmbtr_qms   TYPE p DECIMALS 2, "期末借方
+        dmbtr_qmh   TYPE p DECIMALS 2, "期末贷方
+        rowcolor(4) ,
+        flag        TYPE c , "处理币别
+        zkjqj       TYPE c LENGTH 30, "会计期间
+      END OF gt_alv ,
+      gt_alv_col LIKE gt_alv OCCURS 0 WITH HEADER LINE.
+
+DATA: gt_fagl     LIKE faglflext OCCURS 0 WITH HEADER LINE,
+      gt_skat     LIKE skat OCCURS 0 WITH HEADER LINE,
+      gt_tcurt    LIKE tcurt OCCURS 0 WITH HEADER LINE,
+      gt_bkpf     LIKE bkpf OCCURS 0 WITH HEADER LINE,
+      gt_kna1     LIKE kna1 OCCURS 0 WITH HEADER LINE,
+      gt_lfa1     LIKE lfa1 OCCURS 0 WITH HEADER LINE,
+      gt_zTFI004 LIKE ztfi004 OCCURS 0 WITH HEADER LINE.
+
+*   统驭科目第二层ALV显示
+DATA: BEGIN OF gt_alv2 OCCURS 0,
+        box(1),
+        xh          TYPE i,          "序号
+        bukrs       LIKE bseg-bukrs, "公司代码
+        gjahr       LIKE bseg-gjahr, "会计年度
+        hkont       LIKE bseg-hkont, "科目
+        txt50       LIKE skat-txt50, "科目名称
+        prctr       LIKE bseg-prctr,
+        kunnr       LIKE bseg-kunnr, "客户
+        name1       LIKE kna1-name1, "名称
+        pswsl       LIKE bseg-pswsl, "币别
+        ktext       LIKE tcurt-ktext, "币别描述
+        fx_qc       TYPE c LENGTH 5, "期初方向
+        wrbtr_qc    LIKE bseg-wrbtr, "期初外币
+        dmbtr_qc    LIKE bseg-dmbtr, "期初金额
+        wrbtr_bqs   LIKE bseg-wrbtr, "本期借方外币
+        dmbtr_bqs   LIKE bseg-dmbtr, "本期借方金额
+        wrbtr_bqh   LIKE bseg-wrbtr, "本期贷方外币
+        dmbtr_bqh   LIKE bseg-dmbtr, "本期贷方金额
+        fx_qm       TYPE c LENGTH 5, "期末方向
+        wrbtr_qm    LIKE bseg-wrbtr, "期末外币
+        dmbtr_qm    LIKE bseg-dmbtr, "期末金额
+        dmbtr_qms   LIKE bseg-dmbtr, "期末借方
+        dmbtr_qmh   LIKE bseg-dmbtr, "期末贷方
+        rowcolor(4) ,
+      END OF gt_alv2.
+*   非统驭科目第二层显示以及统驭科目第三层显示
+DATA: BEGIN OF gt_bseg OCCURS 0,
+        box(1),
+        bukrs   LIKE bseg-bukrs,
+        belnr   LIKE bseg-belnr, "会计凭证
+        gjahr   LIKE bseg-gjahr, "会计年度
+        buzei   LIKE bseg-buzei, "行项目
+        bschl   LIKE bseg-bschl, "记帐码
+        koart   LIKE bseg-koart, "账户类型
+        shkzg   LIKE bseg-shkzg, "+-号
+        xnegp   LIKE bseg-xnegp, "反记帐标识
+        dmbtr   LIKE bseg-dmbtr, "本币
+        wrbtr   LIKE bseg-wrbtr, "原币
+        pswsl   LIKE bseg-pswsl, "币别
+        zuonr   LIKE bseg-zuonr, "分配
+        sgtxt   LIKE bseg-sgtxt, "行项目文本
+        hkont   LIKE bseg-hkont, "科目
+        kunnr   LIKE bseg-kunnr, "客户
+        lifnr   LIKE bseg-lifnr, "供应商
+        kostl   LIKE bseg-kostl, "成本中心
+*        zzlpi   LIKE bseg-zzlpi, "贷款项目
+*        zzsl    LIKE bseg-zzsl, "库位
+*        zzini   LIKE bseg-zzini, "投资收益项目
+*        zzac    LIKE bseg-zzac, "关联公司
+        vbund   LIKE bseg-vbund, "贸易伙伴
+        fistl   LIKE bseg-fistl, "基金中心
+        fipos   LIKE bseg-fipos, "承诺项目
+        ktext   LIKE cskt-ktext, "成本中心描述
+*        zlpit   LIKE zfit0003-zlpit, "贷款项目描述
+*        zzslt   LIKE zfit0006-zzslt, "库位描述
+*        zinit   LIKE zfit0005-zinit, "投资收益描述
+*        zzact   LIKE zfit0002-zzact, "关联公司描述
+        name2   LIKE t880-name1, "贸易伙伴描述
+        bezeich LIKE fmfctrt-bezeich, "基金中心描述
+        text1   LIKE fmcit-text1, "承诺项目描述
+        ktext1  LIKE tcurt-ktext, "币别描述
+        txt50   LIKE skat-txt50, "科目名称
+        name1   LIKE kna1-name1, "名称
+        budat   LIKE bkpf-budat, "过帐日期
+        prctr   LIKE bseg-prctr,
+      END OF gt_bseg,
+      gt_alv3 LIKE gt_bseg OCCURS 0 WITH HEADER LINE.
+DATA: lv_date_low  LIKE sy-datum,
+      lv_date_high LIKE sy-datum.
+
+*----------------------------------------------------------------------*
+* Define the Macros
+*----------------------------------------------------------------------*
+DEFINE m_range.
+  CLEAR   &1.
+  &1-low     = &2.
+  &1-high    = &3.
+  &1-sign    = 'I'.
+  &1-option  = &4.
+  APPEND &1.
+END-OF-DEFINITION.
+*&======================================================================&*
+*&                 SELECTION SCREEN
+*&======================================================================&*
+SELECTION-SCREEN BEGIN OF BLOCK b1.
+SELECT-OPTIONS: s_rbukrs FOR faglflext-rbukrs.
+PARAMETERS:     p_ryear LIKE faglflext-ryear OBLIGATORY DEFAULT sy-datum+0(4).
+SELECT-OPTIONS: s_rpmax FOR faglflext-rpmax OBLIGATORY DEFAULT sy-datum+4(2),
+                s_racct FOR faglflext-racct ,
+                s_PRCTR FOR faglflext-PRCTR.
+SELECTION-SCREEN END OF BLOCK b1.

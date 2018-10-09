@@ -1,0 +1,401 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO013F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_faglflext TYPE TABLE OF faglflext,
+       ls_faglflext TYPE faglflext.
+  RANGES:r_racct FOR faglflext-racct.
+  DATA:lv_last_year(4) TYPE c.
+
+  DATA:lv_rpmax    TYPE monat,
+       lv_times(2) TYPE n,
+       lv_index(2) TYPE n.
+  DATA lv_fieldname TYPE fieldname.
+  FIELD-SYMBOLS <fs_hslvt>   TYPE hslvt12.
+  FIELD-SYMBOLS:<fs_list> TYPE tps_list.
+  DATA:ls_list TYPE tps_list.
+
+  DEFINE mcr_add_racct.
+    r_racct = 'ICP'.
+    r_racct-low = &1.
+    APPEND r_racct.
+    CLEAR r_racct.
+  END-OF-DEFINITION.
+
+  mcr_add_racct:'6001*',
+                '6401*',
+                '6402*',
+                '6403*',
+                '6602*',
+                '6603*',
+                '6701*',
+                '6111*',
+                '6301*',
+                '6711*',
+                '6801*',
+                '6051*'. "ADD BY PFT 20171106
+
+  mcr_add_racct:'9600000001','9600000002','9600000003','9600000004','9600000005','9600000006','9600000007','9600000009','9600000012','9600000013','9600000014'.
+  lv_last_year = p_ryear - 1.
+
+  SELECT *
+    INTO TABLE lt_faglflext
+    FROM faglflext
+   WHERE ryear IN (p_ryear,lv_last_year)
+     AND rbukrs IN s_rbukrs
+     AND racct IN r_racct
+     AND prctr IN s_prctr.
+  DELETE lt_faglflext WHERE racct(4) = '6602' AND rfarea NE '2000' AND rfarea NE '3000' AND rfarea NE '4000'.
+
+  IF s_rpmax-high IS INITIAL.
+    lv_rpmax = s_rpmax-low.
+  ELSE.
+    lv_rpmax = s_rpmax-high.
+  ENDIF.
+  IF lv_rpmax = 12.
+    lv_rpmax = 16.
+  ENDIF.
+
+  LOOP AT lt_faglflext INTO ls_faglflext.
+    CLEAR:ls_list.
+    CASE ls_faglflext-racct(4).
+      WHEN '6001' OR '6051' ."CHANGE BY PFT 20171106  增加6501
+        ls_list-zexno = 1.
+      WHEN '6401' OR '6402'.
+        ls_list-zexno = 2.
+      WHEN '6403'.
+        ls_list-zexno = 3.
+      WHEN '6602'.
+        IF ls_faglflext-rfarea = '2000'.
+          ls_list-zexno = 4.
+        ELSEIF ls_faglflext-rfarea = '3000' OR ls_faglflext-rfarea = '4000'.
+          ls_list-zexno = 5.
+        ENDIF.
+      WHEN '6603'.
+        ls_list-zexno = 6.
+      WHEN '6701'.
+        ls_list-zexno = 7.
+      WHEN '6111'.
+        ls_list-zexno = 9.
+      WHEN '6301'.
+        ls_list-zexno = 13.
+      WHEN '6711'.
+        ls_list-zexno = 14.
+      WHEN '6801'.
+        ls_list-zexno = 16.
+      WHEN OTHERS.
+    ENDCASE.
+    CASE ls_faglflext-racct.  "增加9600科目取值 。 2018/1/26
+      WHEN '9600000001'.
+        ls_list-zexno = 1.
+      WHEN '9600000002'.
+        ls_list-zexno = 2.
+      WHEN '9600000003'.
+        ls_list-zexno = 3.
+      WHEN '9600000004'.
+        ls_list-zexno = 4.
+      WHEN '9600000005'.
+        ls_list-zexno = 5.
+      WHEN '9600000006'.
+        ls_list-zexno = 6.
+      WHEN '9600000007'.
+        ls_list-zexno = 7.
+      WHEN '9600000009'.
+        ls_list-zexno = 9.
+      WHEN '9600000012'.
+        ls_list-zexno = 13.
+      WHEN '9600000013'.
+        ls_list-zexno = 14.
+      WHEN '9600000014'.
+        ls_list-zexno = 16.
+      WHEN OTHERS.
+    ENDCASE.
+
+    READ TABLE gt_list ASSIGNING <fs_list> WITH KEY zexno = ls_list-zexno.
+    IF sy-subrc EQ 0.
+      DO  lv_rpmax TIMES.
+        lv_index = sy-index.
+        CONCATENATE 'HSL' lv_index INTO lv_fieldname.
+        ASSIGN COMPONENT lv_fieldname OF STRUCTURE ls_faglflext TO <fs_hslvt>.
+        IF sy-subrc EQ 0.
+          IF lv_index BETWEEN s_rpmax-low AND lv_rpmax.
+            IF ls_faglflext-ryear = p_ryear.
+              <fs_list>-zamount_bq  = <fs_list>-zamount_bq + <fs_hslvt>.
+            ELSEIF ls_faglflext-ryear = lv_last_year.
+              <fs_list>-zamount_sq  = <fs_list>-zamount_sq + <fs_hslvt>.
+            ENDIF.
+          ENDIF.
+          IF ls_faglflext-ryear = p_ryear.
+            <fs_list>-zamount_bnlj  = <fs_list>-zamount_bnlj + <fs_hslvt>.
+          ELSEIF ls_faglflext-ryear = lv_last_year.
+            <fs_list>-zamount_snlj  = <fs_list>-zamount_snlj + <fs_hslvt>.
+          ENDIF.
+        ENDIF.
+      ENDDO.
+    ELSE.
+      DO lv_rpmax TIMES.
+        lv_index = sy-index.
+        CONCATENATE 'HSL' lv_index INTO lv_fieldname.
+        ASSIGN COMPONENT lv_fieldname OF STRUCTURE ls_faglflext TO <fs_hslvt>.
+        IF sy-subrc EQ 0.
+          IF lv_index BETWEEN s_rpmax-low AND lv_rpmax.
+            IF ls_faglflext-ryear = p_ryear.
+              ls_list-zamount_bq  = ls_list-zamount_bq + <fs_hslvt>.
+            ELSEIF ls_faglflext-ryear = lv_last_year.
+              ls_list-zamount_sq  = ls_list-zamount_sq + <fs_hslvt>.
+            ENDIF.
+          ENDIF.
+          IF ls_faglflext-ryear = p_ryear.
+            ls_list-zamount_bnlj  = ls_list-zamount_bnlj + <fs_hslvt>.
+          ELSEIF ls_faglflext-ryear = lv_last_year.
+            ls_list-zamount_snlj  = ls_list-zamount_snlj + <fs_hslvt>.
+          ENDIF.
+        ENDIF.
+      ENDDO.
+      APPEND ls_list TO gt_list.
+      CLEAR ls_list.
+    ENDIF.
+  ENDLOOP.
+
+***********************************************************************
+*  LOOP AT lt_faglflext INTO ls_faglflext.
+*    CLEAR:ls_list.
+*
+*
+*    READ TABLE gt_list ASSIGNING <fs_list> WITH KEY zexno = ls_list-zexno.
+*    IF sy-subrc EQ 0.
+*      DO  lv_rpmax TIMES.
+*        lv_index = sy-index.
+*        CONCATENATE 'HSL' lv_index INTO lv_fieldname.
+*        ASSIGN COMPONENT lv_fieldname OF STRUCTURE ls_faglflext TO <fs_hslvt>.
+*        IF sy-subrc EQ 0.
+*          IF lv_index BETWEEN s_rpmax-low AND lv_rpmax.
+*            IF ls_faglflext-ryear = p_ryear.
+*              <fs_list>-zamount_bq  = <fs_list>-zamount_bq + <fs_hslvt>.
+*            ELSEIF ls_faglflext-ryear = lv_last_year.
+*              <fs_list>-zamount_sq  = <fs_list>-zamount_sq + <fs_hslvt>.
+*            ENDIF.
+*          ENDIF.
+*          IF ls_faglflext-ryear = p_ryear.
+*            <fs_list>-zamount_bnlj  = <fs_list>-zamount_bnlj + <fs_hslvt>.
+*          ELSEIF ls_faglflext-ryear = lv_last_year.
+*            <fs_list>-zamount_snlj  = <fs_list>-zamount_snlj + <fs_hslvt>.
+*          ENDIF.
+*        ENDIF.
+*      ENDDO.
+*    ELSE.
+*      DO lv_rpmax TIMES.
+*        lv_index = sy-index.
+*        CONCATENATE 'HSL' lv_index INTO lv_fieldname.
+*        ASSIGN COMPONENT lv_fieldname OF STRUCTURE ls_faglflext TO <fs_hslvt>.
+*        IF sy-subrc EQ 0.
+*          IF lv_index BETWEEN s_rpmax-low AND lv_rpmax.
+*            IF ls_faglflext-ryear = p_ryear.
+*              ls_list-zamount_bq  = ls_list-zamount_bq + <fs_hslvt>.
+*            ELSEIF ls_faglflext-ryear = lv_last_year.
+*              ls_list-zamount_sq  = ls_list-zamount_sq + <fs_hslvt>.
+*            ENDIF.
+*          ENDIF.
+*          IF ls_faglflext-ryear = p_ryear.
+*            ls_list-zamount_bnlj  = ls_list-zamount_bnlj + <fs_hslvt>.
+*          ELSEIF ls_faglflext-ryear = lv_last_year.
+*            ls_list-zamount_snlj  = ls_list-zamount_snlj + <fs_hslvt>.
+*          ENDIF.
+*        ENDIF.
+*      ENDDO.
+*      APPEND ls_list TO gt_list.
+*      CLEAR ls_list.
+*    ENDIF.
+*  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+********数据定义*******
+  DATA:lv_file   TYPE string,
+       lv_result TYPE c. "标识: 空表示文件不存在;否则,表示存在
+  DATA lv_answer TYPE c.
+  DATA:li_lines TYPE i.
+  DATA:ls_key   TYPE wwwdatatab,
+       lv_subrc TYPE sy-subrc.
+  DATA lv_file1 LIKE rlgrap-filename.
+*******初始化*******
+*******程序主体*******
+
+  CONCATENATE 'C:\CO\' sy-title '-'   sy-datum '.xls' INTO lv_file.
+
+  CALL METHOD cl_gui_frontend_services=>file_exist
+    EXPORTING
+      file                 = lv_file
+    RECEIVING
+      result               = lv_result
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      wrong_parameter      = 3
+      not_supported_by_gui = 4
+      OTHERS               = 5.
+  IF lv_result IS NOT  INITIAL. "文件已经存在
+    CALL FUNCTION 'POPUP_TO_CONFIRM'
+      EXPORTING
+        titlebar              = '请确认'
+        text_question         = '文件已经存在，是否要覆盖?'
+        text_button_1         = '是'
+        text_button_2         = '否'
+        default_button        = '2' "缺省选中按钮: 1 是; 2 否
+        display_cancel_button = ''  "标识: 为空,不显示 取消按钮
+      IMPORTING
+        answer                = lv_answer "标识： 1 是;
+      EXCEPTIONS
+        text_not_found        = 1
+        OTHERS                = 2.
+    IF lv_answer NE '1'.
+      EXIT.
+    ENDIF.
+  ENDIF.
+
+  ls_key-relid = 'MI'.
+  ls_key-objid = gcst_excel_template.
+  lv_file1 = lv_file.
+  CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'
+    EXPORTING
+      key         = ls_key
+      destination = lv_file1
+    IMPORTING
+      rc          = lv_subrc.
+  IF lv_subrc <> 0.
+    MESSAGE '下载模板出错，请检查，谢谢' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+***填充EXCEL数据
+  PERFORM frm_filldata_excel USING lv_file.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FILLDATA_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_FILE  text
+*----------------------------------------------------------------------*
+FORM frm_filldata_excel USING  iv_file TYPE string.
+*******数据定义*******
+  DATA:lo_excel     TYPE ole2_object,
+       lo_workbooks TYPE ole2_object,
+       lo_workbook  TYPE ole2_object,
+       lo_sheet     TYPE ole2_object,
+       lo_range     TYPE ole2_object,
+       lo_cell      TYPE ole2_object,
+       lo_cell1     TYPE ole2_object.
+  DATA lv_file LIKE rlgrap-filename.
+  DATA:lt_excel_in                    "内表：从源文件中读取到的数据
+         TYPE STANDARD TABLE OF alsmex_tabline WITH HEADER LINE.
+  DATA ls_list TYPE tps_list.
+  DATA lv_value TYPE char200.
+  DATA:lv_str TYPE string.
+  DATA:lv_str1 TYPE string."单位
+  DATA:lt_butxt LIKE TABLE OF t001 WITH HEADER LINE.
+
+  DATA lv_row TYPE i.
+  DATA lv_col TYPE i.
+
+  DEFINE mac_fill_cell.
+    CALL METHOD OF lo_sheet 'CELLS' = lo_cell
+      EXPORTING
+        #1 = &1
+        #2 = &2.
+    SET PROPERTY OF lo_cell 'VALUE' = &3.
+  END-OF-DEFINITION.
+
+*******程序主体*******
+*读取模板数据
+  lv_file = iv_file.
+  CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+    EXPORTING
+      filename                = lv_file
+      i_begin_col             = 1
+      i_begin_row             = 1
+      i_end_col               = 10
+      i_end_row               = 70
+    TABLES
+      intern                  = lt_excel_in
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+
+*填充excel
+  CREATE OBJECT lo_excel 'EXCEL.APPLICATION'.
+  CALL METHOD OF lo_excel 'WORKBOOKS' = lo_workbooks.
+  CALL METHOD OF lo_workbooks 'OPEN' = lo_workbook EXPORTING #1 = iv_file.
+  CALL METHOD OF lo_workbook 'WORKSHEETS' = lo_sheet EXPORTING #1 = 1.
+
+  IF s_rpmax-high IS INITIAL.
+    CONCATENATE p_ryear '年' s_rpmax-low+1(2) '月到' p_ryear '年' s_rpmax-low+1(2) '月' INTO lv_str.
+  ELSE.
+    CONCATENATE p_ryear '年' s_rpmax-low+1(2) '月到' p_ryear '年' s_rpmax-high+1(2) '月' INTO lv_str.
+  ENDIF.
+  mac_fill_cell 2 1 lv_str.
+
+  SELECT butxt INTO CORRESPONDING FIELDS OF TABLE lt_butxt FROM t001 WHERE bukrs IN s_rbukrs.
+  lv_str = '编制单位:'.
+  LOOP AT lt_butxt .
+    CONCATENATE  lv_str  lt_butxt-butxt INTO lv_str SEPARATED BY ' '.
+  ENDLOOP.
+
+  CLEAR:lt_butxt[].
+  SELECT waers INTO CORRESPONDING FIELDS OF TABLE lt_butxt FROM t001 WHERE bukrs IN s_rbukrs.
+  lv_str1 = '单位:'.
+  LOOP AT lt_butxt .
+    CONCATENATE  lv_str1  lt_butxt-waers INTO lv_str1 SEPARATED BY ' '.
+  ENDLOOP.
+
+  mac_fill_cell 4 1 lv_str.
+  mac_fill_cell 4 6 lv_str1.
+  "数值
+  LOOP AT gt_list INTO ls_list.
+    lv_value = ls_list-zexno.
+    CONDENSE lv_value.
+    READ TABLE lt_excel_in WITH KEY value = lv_value.
+    IF sy-subrc EQ 0.
+      lv_row = lt_excel_in-row.
+      lv_col = lt_excel_in-col.
+      lv_col = lv_col + 1.
+      IF lv_value = 1 OR lv_value = 13 OR lv_value = 9.
+        ls_list-zamount_bq = -1 * ls_list-zamount_bq.
+        ls_list-zamount_sq = -1 * ls_list-zamount_sq.
+        ls_list-zamount_bnlj = -1 * ls_list-zamount_bnlj.
+        ls_list-zamount_snlj = -1 * ls_list-zamount_snlj.
+      ENDIF.
+      mac_fill_cell lv_row lv_col ls_list-zamount_bq.
+      lv_col = lv_col + 1.
+      mac_fill_cell lv_row lv_col ls_list-zamount_bnlj.
+      lv_col = lv_col + 1.
+      mac_fill_cell lv_row lv_col ls_list-zamount_sq.
+      lv_col = lv_col + 1.
+      mac_fill_cell lv_row lv_col ls_list-zamount_snlj.
+    ENDIF.
+  ENDLOOP.
+
+  CALL METHOD OF lo_sheet 'CELLS' = lo_cell EXPORTING #1 = 1 #2 = 1.
+  CALL METHOD OF lo_cell 'SELECT'.
+  SET PROPERTY OF lo_excel 'CutCopyMode' = 0.
+
+  CALL METHOD OF lo_workbook 'SAVE'.
+  SET PROPERTY OF lo_excel 'VISIBLE' = 1.
+  FREE OBJECT:lo_excel,lo_workbooks,lo_workbook,lo_sheet,lo_range,lo_cell.
+ENDFORM.

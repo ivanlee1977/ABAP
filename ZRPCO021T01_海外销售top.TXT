@@ -1,0 +1,33 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO021T01
+*&---------------------------------------------------------------------*
+TABLES:ce11000.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       artnr LIKE ce11000-artnr,   "产品代码
+       maktx LIKE makt-maktx,      "产品名称
+       ww005 LIKE ce11000-ww005,   "产品型号
+       ww003 LIKE ce11000-ww003,   "产品线
+       absmg LIKE ce11000-absmg,   "数量
+       vv001 LIKE ce11000-vv001,   "销售收入(不含税）
+       ztax  TYPE p DECIMALS 2,    "税额
+       vv002 LIKE ce11000-vv002,   "合计
+     END OF gt_out.
+
+***alv data define
+DATA:gs_layout TYPE lvc_s_layo,
+     gt_fcat   TYPE lvc_t_fcat WITH HEADER LINE.
+
+DEFINE mcr_build_fieldcat.
+  gt_fcat-fieldname = &1.
+  gt_fcat-coltext   = &2.
+  gt_fcat-scrtext_l = &2.
+  gt_fcat-scrtext_m = &2.
+  gt_fcat-scrtext_s = &2.
+  gt_fcat-ref_field = &3.
+  gt_fcat-ref_table = &4.
+  gt_fcat-inttype = &5.
+  gt_fcat-intlen = &6.
+  APPEND gt_fcat.
+  CLEAR gt_fcat.
+END-OF-DEFINITION.

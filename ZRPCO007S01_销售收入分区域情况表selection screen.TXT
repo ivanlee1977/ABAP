@@ -1,0 +1,11 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPCO007S01
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN FUNCTION KEY 1.
+
+SELECTION-SCREEN BEGIN OF BLOCK blc WITH FRAME TITLE TEXT-001.
+PARAMETERS:p_bukrs LIKE ce11000-bukrs OBLIGATORY DEFAULT '1000',
+           p_gjahr LIKE ce11000-gjahr OBLIGATORY DEFAULT sy-datum(4).
+SELECT-OPTIONS:s_perde FOR ce11000-perde OBLIGATORY DEFAULT sy-datum+4(2) NO-EXTENSION.
+SELECTION-SCREEN END OF BLOCK blc.

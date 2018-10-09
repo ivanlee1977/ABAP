@@ -1,0 +1,16 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPCO014T01
+*&---------------------------------------------------------------------*
+
+TABLES:ce11000.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       zlb(10) TYPE c,
+       gjahr   LIKE ce11000-gjahr,
+       perde   LIKE ce11000-perde,
+       vv001   LIKE ce11000-vv001,
+       zyycb   TYPE p DECIMALS 2,
+     END OF gt_out.
+
+
+CONSTANTS:gcst_excel_template TYPE w3objid VALUE 'ZCO014'.

@@ -1,0 +1,36 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO022T01
+*&---------------------------------------------------------------------*
+TABLES:ce11000.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       hrkft         LIKE mbew-hrkft,   "主要产品代码
+       hrktx         LIKE tkkh2-hrktx,  "主要产品描述
+       ztype(1)      TYPE c,            "A:产量，B:销量，C:产销率
+       ztype_txt(10) TYPE c,
+       zsntq         TYPE p DECIMALS 2, "上年同期
+       zbntq         TYPE p DECIMALS 2, "本期
+       zzj           TYPE p DECIMALS 2, "增减
+     END OF gt_out.
+
+FIELD-SYMBOLS:<fs_out> LIKE LINE OF gt_out.
+
+***alv data define
+DATA:gs_layout TYPE lvc_s_layo,
+     gt_fcat   TYPE lvc_t_fcat WITH HEADER LINE,
+     gt_sort   TYPE lvc_t_sort WITH HEADER LINE.
+
+DEFINE mcr_build_fieldcat.
+  gt_fcat-fieldname = &1.
+  gt_fcat-coltext   = &2.
+  gt_fcat-scrtext_l = &2.
+  gt_fcat-scrtext_m = &2.
+  gt_fcat-scrtext_s = &2.
+  gt_fcat-ref_field = &3.
+  gt_fcat-ref_table = &4.
+  gt_fcat-inttype = &5.
+  gt_fcat-intlen = &6.
+  gt_fcat-tech = &7.
+  APPEND gt_fcat.
+  CLEAR gt_fcat.
+END-OF-DEFINITION.

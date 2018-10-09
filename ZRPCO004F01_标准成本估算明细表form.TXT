@@ -1,0 +1,333 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO004F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:BEGIN OF lt_macku OCCURS 0,
+         matnr LIKE macku-matnr,
+         bwkey LIKE macku-bwkey,
+         mtart LIKE macku-mtart,
+         pprdl LIKE mbew-pprdl,
+         pdatl LIKE mbew-pdatl,
+       END OF lt_macku.
+  DATA:BEGIN OF lt_keko OCCURS 0,
+         kalnr   LIKE keko-kalnr,
+         matnr   LIKE keko-matnr,
+         bwkey   LIKE keko-bwkey,
+         feh_sta LIKE keko-feh_sta,
+         stnum   LIKE keko-stnum,  "BOM号码
+         plnnr   LIKE keko-plnnr,  "工艺路线号码
+         cpudt   LIKE keko-cpudt,
+         cputime LIKE keko-cputime,
+         losgr   LIKE keko-losgr,
+         KADKY   LIKE KEKO-KADKY,
+       END OF lt_keko.
+  DATA:BEGIN OF lt_ckis OCCURS 0,
+         kalnr  LIKE ckis-kalnr,
+         posnr  LIKE ckis-posnr,
+         matnr  LIKE ckis-matnr,
+         kostl  LIKE ckis-kostl,
+         hrkft  LIKE ckis-hrkft,
+         kstar  LIKE ckis-kstar,
+         menge  LIKE ckis-menge,
+         meeht  LIKE ckis-meeht,
+         wertn  LIKE ckis-wertn,
+         ukaln  LIKE ckis-ukaln,
+         ukalka LIKE ckis-ukalka,
+         matnr1 LIKE ckis-matnr, "保留最上层物料
+       END OF lt_ckis.
+  DATA:lt_ckis_bom  LIKE lt_ckis OCCURS 0 WITH HEADER LINE, "递归获取的BOM结构数据
+       lt_ckis_temp LIKE lt_ckis OCCURS 0 WITH HEADER LINE.
+  DATA:lv_index LIKE sy-tabix.
+
+  DATA:BEGIN OF lt_makt OCCURS 0,
+         matnr LIKE makt-matnr,
+         maktx LIKE makt-maktx,
+       END OF lt_makt.
+  DATA:lt_cskt LIKE cskt OCCURS 0 WITH HEADER LINE,
+       lt_csku LIKE csku OCCURS 0 WITH HEADER LINE.
+  DATA:lt_tkkh2 LIKE tkkh2 OCCURS 0 WITH HEADER LINE.
+  DATA:lv_losgr LIKE keko-losgr.
+
+***根据选择界面条件，抓取满足条件的数据
+  SELECT a~matnr a~bwkey b~mtart a~pprdl a~pdatl
+    INTO CORRESPONDING FIELDS OF TABLE lt_macku
+    FROM mbew AS a
+    INNER JOIN mara AS b
+    ON a~matnr = b~matnr
+    WHERE a~matnr IN s_matnr
+      AND a~bwkey = p_bwkey
+      AND b~mtart IN s_mtart.
+  CHECK lt_macku[] IS NOT INITIAL.
+***抓取KEKO数据
+  SELECT kalnr
+         matnr
+         bwkey
+         feh_sta
+         stnum
+         plnnr
+         cpudt
+         cputime
+         losgr
+         KADKY
+    INTO CORRESPONDING FIELDS OF TABLE lt_keko
+    FROM keko
+    FOR ALL ENTRIES IN lt_macku
+    WHERE matnr = lt_macku-matnr
+      AND bwkey = lt_macku-bwkey
+      AND feh_sta IN ('KA','FR')
+      and POPER = lt_macku-pprdl
+      and BDATJ = lt_macku-pdatl.
+
+***如果同一个物料有多个核算，取最近的一个
+  SORT lt_keko BY matnr bwkey cpudt DESCENDING cputime DESCENDING kalnr DESCENDING.
+  DELETE ADJACENT DUPLICATES FROM lt_keko COMPARING matnr bwkey.
+
+***抓取CKIS数据
+  CHECK lt_keko[] IS NOT INITIAL.
+  SELECT  kalnr
+          posnr
+          matnr
+          kostl
+          hrkft
+          kstar
+          menge
+          meeht
+          wertn
+          ukaln
+          ukalka
+    INTO CORRESPONDING FIELDS OF TABLE lt_ckis
+    FROM ckis
+    FOR ALL ENTRIES IN lt_keko
+    WHERE kalnr = lt_keko-kalnr
+      and KADKY = lt_keko-KADKY.
+
+***获取需要展下层的数据
+  LOOP AT lt_ckis.
+*    IF lt_ckis-ukaln IS INITIAL.
+    MOVE-CORRESPONDING lt_ckis TO gt_out.
+    READ TABLE lt_keko WITH KEY kalnr = lt_ckis-kalnr.
+    IF sy-subrc = 0.
+      gt_out-zmatn = lt_keko-matnr.
+      gt_out-feh_sta = lt_keko-feh_sta.
+      gt_out-stnum   = lt_keko-stnum.
+      gt_out-plnnr   = lt_keko-plnnr.
+      COLLECT gt_out.
+      CLEAR gt_out.
+    ENDIF.
+*    ELSE.
+****递归获取数据
+*      REFRESH:lt_ckis_bom.
+*      CLEAR lt_ckis_bom.
+*      APPEND lt_ckis TO lt_ckis_bom.
+*      LOOP AT lt_ckis_bom WHERE ukaln IS NOT INITIAL.
+*        lv_index = sy-tabix.
+*        REFRESH:lt_ckis_temp.
+*        CLEAR lt_ckis_temp.
+*        SELECT kalnr
+*               posnr
+*               matnr
+*               kostl
+*               hrkft
+*               kstar
+*               menge
+*               meeht
+*               wertn
+*               ukaln
+*               ukalka
+*          INTO CORRESPONDING FIELDS OF TABLE lt_ckis_temp
+*          FROM ckis
+*          WHERE kalnr = lt_ckis_bom-ukaln
+*            AND kalka = lt_ckis_bom-ukalka.
+*        CLEAR:lv_losgr.
+*        SELECT SINGLE losgr INTO lv_losgr FROM keko WHERE kalnr = lt_ckis_bom-ukaln.
+*        LOOP AT lt_ckis_temp.
+*          lt_ckis_temp-menge = lt_ckis_temp-menge / lv_losgr * lt_ckis_bom-menge.
+*          lt_ckis_temp-wertn = lt_ckis_temp-wertn / lv_losgr * lt_ckis_bom-menge .
+*          APPEND lt_ckis_temp TO lt_ckis_bom.
+*        ENDLOOP.
+*        DELETE lt_ckis_bom INDEX lv_index.
+*      ENDLOOP.
+*      LOOP AT lt_ckis_bom.
+*        MOVE-CORRESPONDING lt_ckis_bom TO gt_out.
+*        READ TABLE lt_keko WITH KEY kalnr = lt_ckis-kalnr.
+*        IF sy-subrc = 0.
+*          gt_out-zmatn = lt_keko-matnr.
+*          gt_out-feh_sta = lt_keko-feh_sta.
+*          gt_out-stnum   = lt_keko-stnum.
+*          gt_out-plnnr   = lt_keko-plnnr.
+*          COLLECT gt_out.
+*          CLEAR gt_out.
+*        ENDIF.
+*      ENDLOOP.
+*    ENDIF.
+  ENDLOOP.
+
+  CHECK gt_out[] IS NOT INITIAL.
+***获取其他字段信息
+  SELECT matnr maktx
+    INTO CORRESPONDING FIELDS OF TABLE lt_makt
+    FROM makt
+    FOR ALL ENTRIES IN gt_out
+    WHERE ( matnr = gt_out-zmatn
+       OR matnr = gt_out-matnr )
+      AND spras = sy-langu.
+***成本中心描述
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_cskt
+    FROM cskt
+    FOR ALL ENTRIES IN gt_out
+    WHERE spras = sy-langu
+      AND kokrs = '1000'
+      AND kostl = gt_out-kostl
+      AND datbi >= sy-datum.
+***成本要素名称
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_csku
+    FROM csku
+    FOR ALL ENTRIES IN gt_out
+    WHERE spras = sy-langu
+      AND ktopl = '1000'
+      AND kstar = gt_out-kstar.
+***原始组描述
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_tkkh2
+    FROM tkkh2
+    FOR ALL ENTRIES IN gt_out
+   WHERE spras = sy-langu
+     AND kokrs = '1000'
+     AND hrkft = gt_out-hrkft.
+
+  SORT lt_makt BY matnr.
+  SORT lt_cskt BY kostl.
+  SORT lt_csku BY kstar.
+  SORT lt_tkkh2 BY hrkft.
+
+  LOOP AT gt_out.
+    READ TABLE lt_makt WITH KEY matnr = gt_out-zmatn BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-maktx = lt_makt-maktx.
+    ENDIF.
+    READ TABLE lt_makt WITH KEY matnr = gt_out-matnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-zmakt = lt_makt-maktx.
+    ENDIF.
+***成本中心描述
+    READ TABLE lt_cskt WITH KEY kostl = gt_out-kostl BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-ktext = lt_cskt-ktext.
+    ENDIF.
+***成本要素名称
+    READ TABLE lt_csku WITH KEY kstar = gt_out-kstar BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-ztext = lt_csku-ktext.
+    ELSE.
+      SELECT SINGLE txt20 INTO gt_out-ztext FROM skat WHERE spras = sy-langu AND ktopl = '1000' AND saknr = gt_out-kstar.
+    ENDIF.
+***原始组描述
+    READ TABLE lt_tkkh2 WITH KEY hrkft = gt_out-hrkft BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-hrktx = lt_tkkh2-hrktx.
+    ENDIF.
+    MODIFY gt_out.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_fieldcat .
+  mcr_build_fieldcat:'ZMATN'   '物料号码'       'MATNR'      'KEKO' ,
+                     'MAKTX'   '物料描述'       'MAKTX'      'MAKT' ,
+                     'FEH_STA' '成本核算状态'   'FEH_STA'    'KEKO' ,
+                     'STNUM'   'BOM号码'        'STNUM'      'KEKO' ,
+                     'PLNNR'   '工艺路线号码'   'PLNNR'      'KEKO' ,
+                     'MATNR'   '组件料号'       'MATNR'      'CKIS' ,
+                     'ZMAKT'   '组件描述'       'MAKTX'      'MAKT' ,
+                     'KOSTL'   '成本中心代码'   'KOSTL'      'CKIS' ,
+                     'KTEXT'   '成本中心描述'   'KTEXT'      'CKKT' ,
+                     'HRKFT'   '原始组'         'HRKFT'      'CKIS' ,
+                     'HRKTX'   '原始组描述'     'HRKTX'      'TKKH2' ,
+                     'KSTAR'   '成本要素'       'KSTAR'      'CKIS' ,
+                     'ZTEXT'   '成本要素名称'   'KTEXT'      'CSKU' ,
+                     'MENGE'   '数量'           'MENGE'      'CKIS' ,
+                     'MEEHT'   '单位'           'MEEHT'      'CKIS' ,
+                     'WERTN'   '金额'           'WERTN'      'CKIS' .
+
+  gs_layout-colwidth_optimize = 'X'.
+  gs_layout-zebra = 'X'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+*     I_INTERFACE_CHECK  = ' '
+*     I_BYPASSING_BUFFER = ' '
+*     I_BUFFER_ACTIVE    = ' '
+      i_callback_program = sy-repid
+*     I_CALLBACK_PF_STATUS_SET          = ' '
+*     I_CALLBACK_USER_COMMAND           = ' '
+*     I_CALLBACK_TOP_OF_PAGE            = ' '
+*     I_CALLBACK_HTML_TOP_OF_PAGE       = ' '
+*     I_CALLBACK_HTML_END_OF_LIST       = ' '
+*     I_STRUCTURE_NAME   =
+*     I_BACKGROUND_ID    = ' '
+*     I_GRID_TITLE       =
+*     I_GRID_SETTINGS    =
+      is_layout          = gs_layout
+      it_fieldcat        = gt_fcat[]
+*     IT_EXCLUDING       =
+*     IT_SPECIAL_GROUPS  =
+*     IT_SORT            =
+*     IT_FILTER          =
+*     IS_SEL_HIDE        =
+      i_default          = 'X'
+      i_save             = 'A'
+*     IS_VARIANT         =
+*     IT_EVENTS          =
+*     IT_EVENT_EXIT      =
+*     IS_PRINT           =
+*     IS_REPREP_ID       =
+*     I_SCREEN_START_COLUMN             = 0
+*     I_SCREEN_START_LINE               = 0
+*     I_SCREEN_END_COLUMN               = 0
+*     I_SCREEN_END_LINE  = 0
+*     I_HTML_HEIGHT_TOP  = 0
+*     I_HTML_HEIGHT_END  = 0
+*     IT_ALV_GRAPHICS    =
+*     IT_HYPERLINK       =
+*     IT_ADD_FIELDCAT    =
+*     IT_EXCEPT_QINFO    =
+*     IR_SALV_FULLSCREEN_ADAPTER        =
+* IMPORTING
+*     E_EXIT_CAUSED_BY_CALLER           =
+*     ES_EXIT_CAUSED_BY_USER            =
+    TABLES
+      t_outtab           = gt_out[]
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.

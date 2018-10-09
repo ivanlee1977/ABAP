@@ -1,0 +1,11 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPCO008S01
+*&---------------------------------------------------------------------*
+
+
+SELECTION-SCREEN BEGIN OF BLOCK blc WITH FRAME TITLE TEXT-001.
+
+PARAMETERS:p_bukrs LIKE ce11000-bukrs OBLIGATORY DEFAULT '1000',
+           p_gjahr LIKE ce11000-gjahr OBLIGATORY DEFAULT sy-datum(4),
+           p_gjahr1 LIKE ce11000-gjahr OBLIGATORY .
+SELECTION-SCREEN END OF BLOCK blc.

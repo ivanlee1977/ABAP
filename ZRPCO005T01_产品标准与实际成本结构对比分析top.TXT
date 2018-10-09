@@ -1,0 +1,125 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO005T01
+*&---------------------------------------------------------------------*
+TABLES: ckmlprkeph,ckmlhd,marc,mara,mbew.
+*ALV变量定义
+DATA: it_fieldcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      lt_sort       TYPE slis_t_sortinfo_alv WITH HEADER LINE,
+      it_events     TYPE slis_t_event,
+      lt_event_exit TYPE slis_t_event_exit,
+      ls_event_exit TYPE slis_event_exit,
+      gs_print      TYPE slis_print_alv,
+      gs_layout     TYPE slis_layout_alv.
+
+DATA: v_poper TYPE n LENGTH 3,   "change by zeng_yanjun 2013年12月4日 14:19:26
+      v_title LIKE sy-title.
+
+*  存放CKMLHD中取出的数
+DATA:BEGIN OF wa_tab,
+       box(1),
+       kalnr   LIKE ckmlhd-kalnr, "成本估算编号
+       bwkey   LIKE ckmlhd-bwkey, "工厂
+       name1   LIKE t001w-name1,
+       matnr   LIKE ckmlhd-matnr, "物料编号
+       maktx   LIKE makt-maktx,
+       mtart   LIKE mara-mtart, "物料类型
+       mtbez   LIKE t134t-mtbez,
+       matkl   LIKE mara-matkl, "物料组
+       wgbez   LIKE t023t-wgbez,
+       bklas   LIKE mbew-bklas, "评估类
+       bkbez   LIKE t025t-bkbez,
+       bzcb    LIKE ckmlprkeph-kst001, "标准成本
+       kst001  LIKE ckmlprkeph-kst001, "电阻电容
+       kst002  LIKE ckmlprkeph-kst002, "二三极管
+       kst004  LIKE ckmlprkeph-kst004, "端子插座
+       kst006  LIKE ckmlprkeph-kst006, "IC
+       kst008  LIKE ckmlprkeph-kst008, "PCB板
+       kst010  LIKE ckmlprkeph-kst010, "结构件
+       kst012  LIKE ckmlprkeph-kst012, "软件
+       kst014  LIKE ckmlprkeph-kst014, "电机
+       kst015  LIKE ckmlprkeph-kst015, "其他类
+       kst016  LIKE ckmlprkeph-kst016, "人工及福利
+       kst018  LIKE ckmlprkeph-kst018, "租赁费
+       kst020  LIKE ckmlprkeph-kst020, "折旧摊销
+       kst022  LIKE ckmlprkeph-kst022, "水电
+       kst024  LIKE ckmlprkeph-kst024, "其他制费
+       kst026  LIKE ckmlprkeph-kst026, "委外加工费
+       sjcb    LIKE ckmlprkeph-kst001, "实际成本
+       kst0011 LIKE ckmlprkeph-kst001, "电阻电容
+       kst0021 LIKE ckmlprkeph-kst002, "二三极管
+       kst0041 LIKE ckmlprkeph-kst004, "端子插座
+       kst0061 LIKE ckmlprkeph-kst006, "IC
+       kst0081 LIKE ckmlprkeph-kst008, "PCB板
+       kst0101 LIKE ckmlprkeph-kst010, "结构件
+       kst0121 LIKE ckmlprkeph-kst012, "软件
+       kst0141 LIKE ckmlprkeph-kst014, "电机
+       kst0151 LIKE ckmlprkeph-kst015, "其他类
+       kst0161 LIKE ckmlprkeph-kst016, "人工及福利
+       kst0181 LIKE ckmlprkeph-kst018, "租赁费
+       kst0201 LIKE ckmlprkeph-kst020, "折旧摊销
+       kst0221 LIKE ckmlprkeph-kst022, "水电
+       kst0241 LIKE ckmlprkeph-kst024, "其他制费
+       kst0261 LIKE ckmlprkeph-kst026, "委外加工费
+     END OF wa_tab,
+     it_tab  LIKE TABLE OF wa_tab,
+     it_tab1 LIKE TABLE OF wa_tab.
+
+*  存放标准成本
+DATA: BEGIN OF wa_keph,
+        kalnr  LIKE keph-kalnr, "成本估算编号
+        kalka  LIKE keph-kalka,
+        kadky  LIKE keph-kadky,
+        tvers  LIKE keph-tvers,
+        bwvar  LIKE keph-bwvar,
+        keart  LIKE keph-keart,
+        bdatj  LIKE ckmlrunplant-gjahr,
+        poper  LIKE ckmlprkeph-poper,
+        kst001 LIKE keph-kst001, "电阻电容
+        kst002 LIKE keph-kst002, "二三极管
+        kst004 LIKE keph-kst004, "端子插座
+        kst006 LIKE keph-kst006, "IC
+        kst008 LIKE keph-kst008, "PCB板
+        kst010 LIKE keph-kst010, "结构件
+        kst012 LIKE keph-kst012, "软件
+        kst014 LIKE keph-kst014, "电机
+        kst015 LIKE keph-kst015, "其他类
+        kst016 LIKE keph-kst016, "人工及福利
+        kst018 LIKE keph-kst018, "租赁费
+        kst020 LIKE keph-kst020, "折旧摊销
+        kst022 LIKE keph-kst022, "水电
+        kst024 LIKE keph-kst024, "其他制费
+        kst026 LIKE keph-kst026, "委外加工费
+      END OF wa_keph,
+      it_keph LIKE TABLE OF wa_keph.
+
+*  存放实际成本
+DATA: BEGIN OF wa_ckmlprkeph,
+        kalnr  LIKE ckmlprkeph-kalnr,
+        bdatj  LIKE ckmlprkeph-bdatj,
+        poper  LIKE ckmlprkeph-poper,
+        prtyp  LIKE ckmlprkeph-prtyp,
+        kst001 LIKE ckmlprkeph-kst001, "电阻电容
+        kst002 LIKE ckmlprkeph-kst002, "二三极管
+        kst004 LIKE ckmlprkeph-kst004, "端子插座
+        kst006 LIKE ckmlprkeph-kst006, "IC
+        kst008 LIKE ckmlprkeph-kst008, "PCB板
+        kst010 LIKE ckmlprkeph-kst010, "结构件
+        kst012 LIKE ckmlprkeph-kst012, "软件
+        kst014 LIKE ckmlprkeph-kst014, "电机
+        kst015 LIKE ckmlprkeph-kst015, "其他类
+        kst016 LIKE ckmlprkeph-kst016, "人工及福利
+        kst018 LIKE ckmlprkeph-kst018, "租赁费
+        kst020 LIKE ckmlprkeph-kst020, "折旧摊销
+        kst022 LIKE ckmlprkeph-kst022, "水电
+        kst024 LIKE ckmlprkeph-kst024, "其他制费
+        kst026 LIKE ckmlprkeph-kst026, "委外加工费
+      END OF wa_ckmlprkeph,
+      it_ckmlprkeph LIKE TABLE OF wa_ckmlprkeph.
+
+DATA:BEGIN OF wa_mbew,
+       matnr LIKE mbew-matnr,
+       bwkey LIKE mbew-bwkey,
+       bklas LIKE mbew-bklas,
+       bkbez LIKE t025t-bkbez,
+     END OF wa_mbew,
+     it_mbew LIKE TABLE OF wa_mbew.

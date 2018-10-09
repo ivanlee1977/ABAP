@@ -1,0 +1,177 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO014F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_ce11000 LIKE ce11000 OCCURS 0 WITH HEADER LINE.
+  DATA:lt_t25a0 LIKE t25a0 OCCURS 0 WITH HEADER LINE.
+  DATA:lv_last_year(4) TYPE c.
+
+  lv_last_year = p_gjahr - 1.
+***抓取满足条件的CE11000数据
+  SELECT * INTO TABLE lt_ce11000 FROM ce11000 WHERE bukrs = p_bukrs AND gjahr IN (p_gjahr,lv_last_year) AND perde <= p_perde AND paledger = '02'.
+
+  SELECT * INTO TABLE lt_t25a0 FROM t25a0 WHERE spras = sy-langu.
+  SORT lt_t25a0 BY ww001.
+
+***汇总数据到输出表
+  LOOP AT lt_ce11000.
+    CASE lt_ce11000-ww001.
+      WHEN '1000' OR '1001' OR '1002' OR '1003'.
+        gt_out-zlb   = '驱动器'.
+      WHEN '1004' OR '1005' OR '1006' OR '1007'.
+        gt_out-zlb   = '电机'.
+      WHEN '1008'.
+        gt_out-zlb   = '一体机'.
+      WHEN '1009'.
+        gt_out-zlb   = '通用控制卡(器)'.
+      WHEN '1010'.
+        gt_out-zlb   = '专用控制器'.
+      WHEN OTHERS.
+        gt_out-zlb   = '其它'.
+    ENDCASE.
+    IF lt_ce11000-gjahr = p_gjahr.
+      gt_out-gjahr = lt_ce11000-gjahr.
+      gt_out-perde = lt_ce11000-perde.
+    ELSEIF lt_ce11000-gjahr = lv_last_year.
+      gt_out-gjahr = lt_ce11000-gjahr.
+      CLEAR:gt_out-perde.  "上年同期不按月份，只取总数
+    ENDIF.
+    gt_out-vv001 = lt_ce11000-vv001.
+    IF lt_ce11000-copa_awtyp = 'MLHD'.
+      gt_out-zyycb = lt_ce11000-vv200  - lt_ce11000-vv207.
+    ELSE.
+      gt_out-zyycb = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+    ENDIF.
+    COLLECT gt_out.
+    CLEAR gt_out.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  DATA:ls_key   TYPE wwwdatatab,
+       lv_subrc TYPE sy-subrc.
+  DATA lv_file LIKE rlgrap-filename.
+
+  CONCATENATE 'C:\CO\' sy-title '-'   sy-datum '.xls' INTO lv_file.
+
+  ls_key-relid = 'MI'.
+  ls_key-objid = gcst_excel_template.
+  CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'
+    EXPORTING
+      key         = ls_key
+      destination = lv_file
+    IMPORTING
+      rc          = lv_subrc.
+  IF lv_subrc <> 0.
+    MESSAGE '下载模板出错，请检查，谢谢' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+
+***填充EXCEL数据
+  PERFORM frm_filldata_excel USING lv_file.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FILLDATA_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_FILE  text
+*----------------------------------------------------------------------*
+FORM frm_filldata_excel  USING iv_file TYPE rlgrap-filename.
+*******数据定义*******
+  DATA:lo_excel     TYPE ole2_object,
+       lo_workbooks TYPE ole2_object,
+       lo_workbook  TYPE ole2_object,
+       lo_sheet     TYPE ole2_object,
+       lo_range     TYPE ole2_object,
+       lo_cell      TYPE ole2_object,
+       lo_cell1     TYPE ole2_object.
+  DATA lv_file LIKE rlgrap-filename.
+
+  DATA lv_row TYPE i.
+  DATA lv_col TYPE i.
+
+  DEFINE mac_fill_cell.
+    CALL METHOD OF lo_sheet 'CELLS' = lo_cell
+      EXPORTING
+        #1 = &1
+        #2 = &2.
+    SET PROPERTY OF lo_cell 'VALUE' = &3.
+  END-OF-DEFINITION.
+
+  DATA:lv_text_ny TYPE string.
+  DATA:lv_butxt     LIKE t001-butxt,
+       lv_bzdw(100) TYPE c.
+
+*******程序主体*******
+
+*填充excel
+  CREATE OBJECT lo_excel 'EXCEL.APPLICATION'.
+  CALL METHOD OF lo_excel 'WORKBOOKS' = lo_workbooks.
+  CALL METHOD OF lo_workbooks 'OPEN' = lo_workbook EXPORTING #1 = iv_file.
+  CALL METHOD OF lo_workbook 'WORKSHEETS' = lo_sheet EXPORTING #1 = 1.
+
+***年月
+  CONCATENATE p_gjahr '年'  p_perde+1(2) '月'  INTO lv_text_ny.
+  mac_fill_cell 2 1  lv_text_ny.  "年月
+
+  SELECT SINGLE butxt INTO lv_butxt FROM t001 WHERE bukrs = p_bukrs.
+  CONCATENATE '编制单位：' lv_butxt INTO lv_bzdw.
+  mac_fill_cell 3 1  lv_bzdw.
+
+*  "数值
+  LOOP AT gt_out.
+    CASE gt_out-zlb.
+      WHEN '驱动器'.
+        lv_row = 6.
+      WHEN '电机'.
+        lv_row = 7.
+      WHEN '一体机'.
+        lv_row = 8.
+      WHEN '通用控制卡(器)'.
+        lv_row = 9.
+      WHEN '专用控制器'.
+        lv_row = 10.
+      WHEN '其它'.
+        lv_row = 11.
+      WHEN OTHERS.
+        CONTINUE.
+    ENDCASE.
+    IF gt_out-gjahr = p_gjahr.
+      lv_col = gt_out-perde + 1.
+      mac_fill_cell: lv_row  lv_col gt_out-vv001.
+      lv_row = lv_row + 8.
+      mac_fill_cell: lv_row  lv_col gt_out-zyycb.
+    ELSE.
+      lv_col = 15.
+      mac_fill_cell: lv_row  lv_col gt_out-vv001.
+      lv_row = lv_row + 8.
+      mac_fill_cell: lv_row  lv_col gt_out-zyycb.
+    ENDIF.
+  ENDLOOP.
+
+  CALL METHOD OF lo_sheet 'CELLS' = lo_cell EXPORTING #1 = 1 #2 = 1.
+  CALL METHOD OF lo_cell 'SELECT'.
+  SET PROPERTY OF lo_excel 'CutCopyMode' = 0.
+
+  CALL METHOD OF lo_workbook 'SAVE'.
+  SET PROPERTY OF lo_excel 'VISIBLE' = 1.
+  FREE OBJECT:lo_excel,lo_workbooks,lo_workbook,lo_sheet,lo_range,lo_cell.
+ENDFORM.

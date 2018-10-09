@@ -1,0 +1,48 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPCO017T01
+*&---------------------------------------------------------------------*
+TABLES:bsis.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       zexno(2) TYPE n,
+       zamount  TYPE p DECIMALS 2,
+       zamount1 TYPE p DECIMALS 2,
+     END OF gt_out.
+
+DATA:gv_date LIKE sy-datum.
+
+RANGES:r_bwkey FOR t001k-bwkey.
+
+  DATA:BEGIN OF gt_bseg OCCURS 0,
+         bukrs LIKE bseg-bukrs,
+         belnr LIKE bseg-belnr,
+         gjahr LIKE bseg-gjahr,
+         buzei LIKE bseg-buzei,
+         dmbtr LIKE bseg-dmbtr,
+         shkzg LIKE bseg-shkzg,
+         bklas LIKE mbew-bklas,
+         matnr LIKE bseg-matnr,
+         WERKS LIKE bseg-WERKS,
+         HKONT LIKE bseg-HKONT,
+       END OF gt_bseg.
+
+  DATA:BEGIN OF gt_ckmlhd OCCURS 0,
+         kalnr LIKE ckmlhd-kalnr,
+         matnr LIKE ckmlhd-matnr,
+         bwkey LIKE ckmlhd-bwkey,
+         bdatj LIKE ckmlcr-bdatj,
+         poper LIKE ckmlcr-poper,
+         pvprs LIKE ckmlcr-pvprs,
+         peinh LIKE ckmlcr-peinh,
+       END OF gt_ckmlhd.
+
+  DATA:BEGIN OF gt_ckmlprkeph OCCURS 0,
+         kalnr  LIKE ckmlprkeph-kalnr,
+         bdatj  LIKE ckmlprkeph-bdatj,
+         poper  LIKE ckmlprkeph-poper,
+         kst012 LIKE ckmlprkeph-kst012,
+         lbkum  LIKE ckmlpp-lbkum,
+         losgr  LIKE ckmlprkeko-losgr,
+       END OF gt_ckmlprkeph.
+
+CONSTANTS:gcst_excel_template TYPE w3objid VALUE 'ZCO017'.

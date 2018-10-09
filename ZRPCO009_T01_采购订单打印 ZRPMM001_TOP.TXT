@@ -1,0 +1,69 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPMM001_TOP
+*&---------------------------------------------------------------------*
+TYPE-POOLS:slis.
+
+TABLES:mara,mbew,marc,macku .
+
+
+DATA:BEGIN OF gt_co  OCCURS 0,"展示内表
+       matnr LIKE mbew-matnr,
+       maktx LIKE makt-maktx,
+       mtart LIKE mara-mtart,
+       mtbez LIKE t134t-mtbez,
+       matkl LIKE mara-matkl,
+       wgbez LIKE t023t-wgbez,
+       bismt LIKE mara-bismt,
+       meins LIKE mara-meins,
+       spart LIKE mara-spart,
+       vtext LIKE tspat-vtext,
+       beskz LIKE marc-beskz,
+       sobsl LIKE marc-sobsl,
+       ltext LIKE t460t-ltext,
+       bklas LIKE mbew-bklas,
+       bkbez LIKE t025t-bkbez,
+       hrkft LIKE mbew-hrkft,
+       hrktx LIKE tkkh2-hrktx,
+       vprsv LIKE mbew-vprsv,
+       mlast LIKE mbew-mlast,
+       lplpr LIKE mbew-lplpr,
+       zplp1 LIKE mbew-zplp1,
+       zpld1 LIKE mbew-zpld1,
+       mlmaa LIKE mbew-mlmaa,
+       ekalr LIKE mbew-ekalr,
+       hkmat LIKE mbew-hkmat,
+       awsls LIKE marc-awsls,
+       ncost LIKE marc-ncost,
+     END OF gt_co.
+
+*DATA : BEGIN OF gt_item OCCURS 0,
+*         matnr LIKE lips-matnr,
+*         maktx LIKE makt-maktx,
+*         charg LIKE lips-charg,
+*         meins LIKE lips-meins,
+*         bdmng LIKE resb-bdmng,
+*         lfimg LIKE lips-lfimg,
+*         lgort LIKE lips-lgort,
+*
+*       END OF gt_item.
+
+DATA: gt_fcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      gs_layout TYPE slis_layout_alv.
+
+*DATA: gs_option  TYPE ssfcompop,
+*      gs_control TYPE ssfctrlop.
+
+*DATA lv_name TYPE rs38l_fnam.
+*DATA gt_head LIKE TABLE OF gt_mm WITH HEADER LINE.
+*
+*DATA num TYPE i.
+
+DEFINE g_fieldfcat .
+  gt_fcat-fieldname = &1.
+  gt_fcat-seltext_s = &2.
+  gt_fcat-ddictxt = 'S'.
+  gt_fcat-ref_fieldname = &3.
+  gt_fcat-ref_tabname = &4.
+  APPEND gt_fcat.
+  CLEAR gt_fcat.
+END-OF-DEFINITION.

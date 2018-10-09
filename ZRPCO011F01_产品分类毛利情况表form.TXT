@@ -1,0 +1,333 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO011F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_ce11000 LIKE ce11000 OCCURS 0 WITH HEADER LINE.
+  DATA:lv_last_year LIKE ce11000-gjahr.
+  DATA:lt_t25a0 LIKE t25a0 OCCURS 0 WITH HEADER LINE.
+  DATA:lv_fname(30) TYPE c.
+  FIELD-SYMBOLS:<fs_field> TYPE any .
+  DATA:ls_sr LIKE gt_out,
+       ls_cb LIKE gt_out,
+       ls_ml LIKE gt_out.
+  DATA:lt_ml_percent LIKE gt_out OCCURS 0 WITH HEADER LINE.
+
+***抓取满足条件的数据
+  lv_last_year = p_gjahr - 1.
+
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_ce11000
+    FROM ce11000
+    WHERE bukrs = p_bukrs
+     AND paledger = '02'
+     AND gjahr IN (p_gjahr,lv_last_year)
+     AND perde BETWEEN '001' AND p_perde.
+
+  CHECK lt_ce11000[] IS NOT INITIAL.
+***获取产品分类描述
+  SELECT * INTO TABLE lt_t25a0 FROM t25a0 WHERE spras = sy-langu.
+
+  SORT lt_t25a0 BY ww001.
+
+  LOOP AT lt_ce11000.
+    CLEAR:ls_sr,ls_cb,ls_ml.
+
+***收入
+    IF  strlen( lt_ce11000-ww001 ) = 2  OR lt_ce11000-ww001 = '1098' OR lt_ce11000-ww001 = '1099'.
+      lt_ce11000-ww001 = '99999998'.
+      ls_sr-ww001 = lt_ce11000-ww001.
+      ls_sr-bezek = '其它'.
+    ELSE.
+      ls_sr-ww001 = lt_ce11000-ww001.
+      READ TABLE lt_t25a0 WITH KEY ww001 = lt_ce11000-ww001 BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_sr-bezek = lt_t25a0-bezek.
+      ENDIF.
+    ENDIF.
+    CASE lt_ce11000-gjahr.
+      WHEN p_gjahr.
+        CONCATENATE 'AMOUNT' lt_ce11000-perde+1(2) INTO lv_fname.
+        ASSIGN COMPONENT lv_fname OF STRUCTURE ls_sr TO <fs_field>.
+        IF sy-subrc = 0.
+          ls_sr-zsort = '1'.  "收入
+          <fs_field> = lt_ce11000-vv001 .
+        ENDIF.
+        ls_sr-zbnlj = lt_ce11000-vv001.
+      WHEN lv_last_year.
+        ls_sr-zsntq = lt_ce11000-vv001.
+      WHEN OTHERS.
+    ENDCASE.
+    COLLECT ls_sr INTO gt_out.
+
+***成本
+    ls_cb-ww001 = lt_ce11000-ww001.
+    ls_cb-bezek = ls_sr-bezek.
+    CASE lt_ce11000-gjahr.
+      WHEN p_gjahr.
+        CONCATENATE 'AMOUNT' lt_ce11000-perde+1(2) INTO lv_fname.
+        ASSIGN COMPONENT lv_fname OF STRUCTURE ls_cb TO <fs_field>.
+        IF sy-subrc = 0.
+          ls_cb-zsort = '2'.  "成本
+          IF lt_ce11000-copa_awtyp = 'MLHD'.
+            <fs_field> = lt_ce11000-vv200  - lt_ce11000-vv207.
+          ELSE.
+            <fs_field> = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+          ENDIF.
+        ENDIF.
+        IF lt_ce11000-copa_awtyp = 'MLHD'.
+          ls_cb-zbnlj = lt_ce11000-vv200  - lt_ce11000-vv207.
+        ELSE.
+          ls_cb-zbnlj = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+        ENDIF.
+      WHEN lv_last_year.
+        IF lt_ce11000-copa_awtyp = 'MLHD'.
+          ls_cb-zsntq = lt_ce11000-vv200  - lt_ce11000-vv207.
+        ELSE.
+          ls_cb-zsntq = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+        ENDIF.
+      WHEN OTHERS.
+    ENDCASE.
+    COLLECT ls_cb INTO gt_out.
+
+***毛利
+    ls_ml-ww001 = lt_ce11000-ww001.
+    ls_ml-bezek = ls_sr-bezek.
+    ls_ml-zsort = '3'.     "毛利
+    ls_ml-amount01 = ls_sr-amount01 - ls_cb-amount01.
+    ls_ml-amount02 = ls_sr-amount02 - ls_cb-amount02.
+    ls_ml-amount03 = ls_sr-amount03 - ls_cb-amount03.
+    ls_ml-amount04 = ls_sr-amount04 - ls_cb-amount04.
+    ls_ml-amount05 = ls_sr-amount05 - ls_cb-amount05.
+    ls_ml-amount06 = ls_sr-amount06 - ls_cb-amount06.
+    ls_ml-amount07 = ls_sr-amount07 - ls_cb-amount07.
+    ls_ml-amount08 = ls_sr-amount08 - ls_cb-amount08.
+    ls_ml-amount09 = ls_sr-amount09 - ls_cb-amount09.
+    ls_ml-amount10 = ls_sr-amount10 - ls_cb-amount10.
+    ls_ml-amount11 = ls_sr-amount11 - ls_cb-amount11.
+    ls_ml-amount12 = ls_sr-amount12 - ls_cb-amount12.
+    ls_ml-zbnlj    = ls_sr-zbnlj    - ls_cb-zbnlj.
+    ls_ml-zsntq    = ls_sr-zsntq    - ls_cb-zsntq.
+    COLLECT ls_ml INTO gt_out.
+
+***获取总计数据
+    ls_sr-ww001 = '99999999'.
+    ls_sr-bezek = '总计'.
+    COLLECT ls_sr INTO gt_out.
+
+    ls_cb-ww001 = '99999999'.
+    ls_cb-bezek = '总计'.
+    COLLECT ls_cb INTO gt_out.
+
+    ls_ml-ww001 = '99999999'.
+    ls_ml-bezek = '总计'.
+    COLLECT ls_ml INTO gt_out.
+  ENDLOOP.
+
+  SORT gt_out BY ww001 zsort.
+***毛利率
+  LOOP AT gt_out ASSIGNING <fs_data>.
+    AT NEW ww001.
+      CLEAR:ls_sr,ls_ml.
+    ENDAT.
+    CASE <fs_data>-zsort.
+      WHEN '1'.
+        <fs_data>-zname = '收入'.
+        MOVE-CORRESPONDING <fs_data> TO ls_sr.
+      WHEN '2'.
+        <fs_data>-zname = '成本'.
+      WHEN '3'.
+        <fs_data>-zname = '毛利'.
+        MOVE-CORRESPONDING <fs_data> TO ls_ml.
+      WHEN OTHERS.
+    ENDCASE.
+
+***增减率
+    IF <fs_data>-zsntq NE 0.
+      <fs_data>-zjl = ( <fs_data>-zbnlj - <fs_data>-zsntq ) / <fs_data>-zsntq * 100.
+    ENDIF.
+
+    AT END OF ww001.
+      lt_ml_percent-ww001 = <fs_data>-ww001.
+      lt_ml_percent-bezek = <fs_data>-bezek.
+      lt_ml_percent-zsort = '4'. "毛利率
+      lt_ml_percent-zname = '毛利率%'.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount01 ls_sr-amount01 ls_ml-amount01.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount02 ls_sr-amount02 ls_ml-amount02.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount03 ls_sr-amount03 ls_ml-amount03.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount04 ls_sr-amount04 ls_ml-amount04.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount05 ls_sr-amount05 ls_ml-amount05.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount06 ls_sr-amount06 ls_ml-amount06.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount07 ls_sr-amount07 ls_ml-amount07.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount08 ls_sr-amount08 ls_ml-amount08.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount09 ls_sr-amount09 ls_ml-amount09.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount10 ls_sr-amount10 ls_ml-amount10.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount11 ls_sr-amount11 ls_ml-amount11.
+      PERFORM frm_get_ml_percent USING lt_ml_percent-amount12 ls_sr-amount12 ls_ml-amount12.
+      APPEND lt_ml_percent.
+      CLEAR lt_ml_percent.
+    ENDAT.
+  ENDLOOP.
+
+  APPEND LINES OF lt_ml_percent TO gt_out.
+
+  SORT gt_out BY ww001 zsort.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_ML_PERCENT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LT_ML_PERCENT_AMOUNT01  text
+*      -->P_LS_SR_AMOUNT01  text
+*      -->P_LS_ML_AMOUNT01  text
+*----------------------------------------------------------------------*
+FORM frm_get_ml_percent  USING   u_ml_percent TYPE p
+                                  u_sr_amount TYPE p
+                                  u_ml_amount TYPE p.
+  IF u_sr_amount NE 0.
+    u_ml_percent = u_ml_amount / u_sr_amount * 100.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_fieldcat .
+  mcr_build_fieldcat:'WW001'     '产品分类代码'   'C'    '8',
+                     'BEZEK'     '产品分类'   'C'    '20',
+                     'ZNAME'     ''           'C'    '20',
+                     'AMOUNT01'  '1月'        'P'    '15',
+                     'AMOUNT02'  '2月'        'P'    '15',
+                     'AMOUNT03'  '3月'        'P'    '15',
+                     'AMOUNT04'  '4月'        'P'    '15',
+                     'AMOUNT05'  '5月'        'P'    '15',
+                     'AMOUNT06'  '6月'        'P'    '15',
+                     'AMOUNT07'  '7月'        'P'    '15',
+                     'AMOUNT08'  '8月'        'P'    '15',
+                     'AMOUNT09'  '9月'        'P'    '15',
+                     'AMOUNT10'  '10月'       'P'    '15',
+                     'AMOUNT11'  '11月'       'P'    '15',
+                     'AMOUNT12'  '12月'       'P'    '15',
+                     'ZBNLJ'     '全年累计'   'P'    '15',
+                     'ZSNTQ'     '上年同期'   'P'    '15',
+                     'ZJL'       '增减率%'    'P'    '15'.
+
+  gs_layout-cwidth_opt = 'X'.
+  gs_layout-zebra = 'X'.
+
+  REFRESH gt_sort.
+  gt_sort-fieldname = 'WW001'.
+  gt_sort-up        = 'X'.
+  APPEND gt_sort.
+  CLEAR gt_sort.
+  gt_sort-fieldname = 'BEZEK'.
+  gt_sort-up        = 'X'.
+  APPEND gt_sort.
+  CLEAR gt_sort.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+*     I_INTERFACE_CHECK      = ' '
+*     I_BYPASSING_BUFFER     =
+*     I_BUFFER_ACTIVE        =
+      i_callback_program     = sy-repid
+*     I_CALLBACK_PF_STATUS_SET          = ' '
+*     I_CALLBACK_USER_COMMAND           = ' '
+      i_callback_top_of_page = 'FRM_TOP_OF_PAGE'
+*     I_CALLBACK_HTML_TOP_OF_PAGE       = ' '
+*     I_CALLBACK_HTML_END_OF_LIST       = ' '
+*     I_STRUCTURE_NAME       =
+*     I_BACKGROUND_ID        = ' '
+*     I_GRID_TITLE           =
+*     I_GRID_SETTINGS        =
+      is_layout_lvc          = gs_layout
+      it_fieldcat_lvc        = gt_fcat[]
+*     IT_EXCLUDING           =
+*     IT_SPECIAL_GROUPS_LVC  =
+      it_sort_lvc            = gt_sort[]
+*     IT_FILTER_LVC          =
+*     IT_HYPERLINK           =
+*     IS_SEL_HIDE            =
+      i_default              = 'X'
+      i_save                 = 'A'
+*     IS_VARIANT             =
+*     IT_EVENTS              =
+*     IT_EVENT_EXIT          =
+*     IS_PRINT_LVC           =
+*     IS_REPREP_ID_LVC       =
+*     I_SCREEN_START_COLUMN  = 0
+*     I_SCREEN_START_LINE    = 0
+*     I_SCREEN_END_COLUMN    = 0
+*     I_SCREEN_END_LINE      = 0
+*     I_HTML_HEIGHT_TOP      =
+*     I_HTML_HEIGHT_END      =
+*     IT_ALV_GRAPHICS        =
+*     IT_EXCEPT_QINFO_LVC    =
+*     IR_SALV_FULLSCREEN_ADAPTER        =
+* IMPORTING
+*     E_EXIT_CAUSED_BY_CALLER           =
+*     ES_EXIT_CAUSED_BY_USER =
+    TABLES
+      t_outtab               = gt_out[]
+    EXCEPTIONS
+      program_error          = 1
+      OTHERS                 = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_top_of_page .
+  DATA:lt_list_header TYPE slis_t_listheader WITH HEADER LINE.
+
+  lt_list_header-typ = 'S'.
+  lt_list_header-key = '公司名称：'.
+  SELECT SINGLE butxt
+    INTO lt_list_header-info
+    FROM t001
+    WHERE bukrs = p_bukrs.
+  APPEND lt_list_header.
+
+  lt_list_header-typ = 'S'.
+  lt_list_header-key = '会计年度：'.
+  lt_list_header-info = p_gjahr.
+  APPEND lt_list_header.
+
+  lt_list_header-typ = 'S'.
+  lt_list_header-key = '期   间：'.
+  lt_list_header-info = p_perde.
+  APPEND lt_list_header.
+
+  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+    EXPORTING
+      it_list_commentary = lt_list_header[].
+ENDFORM.

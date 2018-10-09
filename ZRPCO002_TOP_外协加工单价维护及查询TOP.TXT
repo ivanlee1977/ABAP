@@ -1,0 +1,89 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO001_TOP
+*&---------------------------------------------------------------------*
+TYPE-POOLS:truxs,slis.
+DATA:xlstab TYPE truxs_t_text_data.
+TABLES:mara,marc.
+TYPE-POOLS: slis.
+DATA:
+  it_fieldcat TYPE lvc_t_fcat,
+  wa_fieldcat LIKE LINE OF it_fieldcat,
+  gs_layout   TYPE lvc_s_layo,
+  it_events   TYPE slis_t_event, ""事件属性
+  wa_events   TYPE slis_alv_event.
+
+DATA:BEGIN OF gw_item,"批导内表
+       matnr      LIKE marc-matnr, "物料编码
+       werks      LIKE marc-werks, "工厂
+       zplp1      LIKE mbew-zplp1, "计划价格
+       zpld1      LIKE mbew-zpld1, "计划日期
+       result(50) TYPE c, "数据检查结果
+       biaoshi(1) TYPE c, "不存在标识
+       bwkey      LIKE mbew-bwkey,
+       mbrsh      LIKE mara-mbrsh, "行业类型
+       mtart      LIKE mara-mtart, "物料类型
+       iconname   TYPE icon-name,
+     END OF gw_item.
+DATA:gt_item LIKE gw_item OCCURS 0.
+
+
+DATA:BEGIN OF gw_alv,"查询内表
+       sel(1)      TYPE c,
+       matnr       LIKE marc-matnr, "物料编码
+       werks       LIKE marc-werks, "工厂
+       zplp1       LIKE mbew-zplp1, "计划价格
+       zpld1       LIKE mbew-zpld1, "计划日期
+       bwkey       LIKE t001w-bwkey, "估价范围
+       field_style TYPE lvc_t_styl, " 为内表添加设置编辑状态所需的字段
+     END OF gw_alv.
+DATA:gt_alv LIKE gw_alv OCCURS 0.
+
+*定义变量
+DATA: gc_filename TYPE string,
+      gc_path     TYPE string,
+      gc_fullpath TYPE string.
+
+DATA: bdcdata1 LIKE TABLE OF bdcdata WITH HEADER LINE.
+DATA:msgtab LIKE bdcmsgcoll OCCURS 0 WITH HEADER LINE."定义消息内表
+
+DATA: BEGIN OF bdcdata OCCURS 0.
+    INCLUDE STRUCTURE bdcdata.
+DATA: END OF bdcdata.
+
+*创建对象实例，用于打开Excel程序
+DATA: xl_appl           TYPE ole2_object,
+      xl_sheet          TYPE ole2_object,
+      xl_init_sheet     TYPE ole2_object,
+      xl_template_sheet TYPE ole2_object,
+      xl_wkbks          TYPE ole2_object,
+      xl_cell           TYPE ole2_object,
+      xl_row            TYPE ole2_object,
+      blankrow          TYPE i VALUE 0,
+      currentrow        TYPE i VALUE 0,
+      g_workbook        TYPE ole2_object.
+
+DATA:sheet TYPE ole2_object.   " Worksheet object
+DATA: sheet_name(20) VALUE 'SHEET1'.  "Excel文件里的sheet name
+
+
+TABLES: sscrfields.
+DATA functxt TYPE smp_dyntxt.
+
+CONSTANTS: cs_objid    TYPE wwwdata-objid  VALUE 'ZCO002'. "通过事务代码
+CONSTANTS: gwk_directory TYPE string VALUE 'D:\',
+           gwk_extension TYPE string VALUE '.XLS',
+           gwk_title     TYPE string VALUE '文件夹路径及文件名'.
+
+DATA: gwk_filename  TYPE string.
+DATA: gwk_excel TYPE ole2_object, "excel文件名称
+      gwk_books TYPE ole2_object, "excel工作薄
+      gwk_sheet TYPE ole2_object, "excel工作表
+      gwk_cell  TYPE ole2_object. "excel单元格
+
+DATA:ok_code   TYPE sy-ucomm,
+     save_ok   TYPE sy-ucomm,
+     errorcode TYPE i.
+DATA: l_grid TYPE REF TO cl_gui_alv_grid.
+
+
+DATA stylelin TYPE lvc_s_styl.

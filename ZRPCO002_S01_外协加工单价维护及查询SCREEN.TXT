@@ -1,0 +1,11 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO001_S01
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN FUNCTION KEY 1."新增一个按钮
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS p_path  LIKE rlgrap-filename .
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+SELECT-OPTIONS:s_matnr FOR mara-matnr.
+SELECTION-SCREEN END OF BLOCK b2.

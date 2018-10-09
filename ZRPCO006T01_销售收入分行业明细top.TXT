@@ -1,0 +1,13 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO006T01
+*&---------------------------------------------------------------------*
+TABLES:ce11000,sscrfields.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       zsort LIKE ztco002-zsort,
+       zname LIKE ztco002-zname,  "行业
+       zyysr TYPE p DECIMALS 2,   "营业收入
+       zyycb TYPE p DECIMALS 2,   "营业成本
+     END OF gt_out.
+
+CONSTANTS:gcst_excel_template TYPE w3objid VALUE 'ZCO006'.

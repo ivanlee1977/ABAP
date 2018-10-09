@@ -1,0 +1,246 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPMM023_F01
+*&---------------------------------------------------------------------*
+
+
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+
+  DATA: wa_extab TYPE slis_extab.
+
+  SET PF-STATUS '0100' EXCLUDING rt_extab.
+
+ENDFORM.                    "set_pf_status1
+
+FORM alv_user_command USING r_ucomm LIKE sy-ucomm  rs_selfield TYPE slis_selfield.
+
+  DATA: lv_grid TYPE REF TO cl_gui_alv_grid.
+
+  rs_selfield-refresh = 'X'.
+  rs_selfield-col_stable = 'X'.
+  rs_selfield-row_stable = 'X'.
+
+*  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+*    IMPORTING
+*      e_grid = lv_grid.
+*
+*  CALL METHOD lv_grid->check_changed_data( ).
+
+*  CASE r_ucomm.
+*    WHEN 'ZCLICK'.
+*      PERFORM frm_print.
+*  ENDCASE.
+
+
+ENDFORM.                    "alv_user_command
+
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GETDATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_getdata .
+*DATA log_op TYPE trff_type_c_2.
+  SELECT
+      ww006
+      ww004
+      ww012
+      ww013
+      vkorg
+      vv002
+      budat
+       INTO CORRESPONDING FIELDS OF TABLE gt_co
+        FROM ce11000
+        WHERE bukrs = p_bukrs
+          AND gjahr = p_gjahr
+          AND perde IN s_perde
+          AND paledger = '02'
+*          AND ( absmg <> '' OR vv001 <> '' )
+
+    .
+
+
+  CHECK gt_co[] IS NOT INITIAL.
+  DATA: lv_12 TYPE num14, lv_13 TYPE num14.
+
+  LOOP AT gt_co.
+    lv_12 = gt_co-ww012.
+    lv_12 = lv_12+0(8).
+    lv_13 = gt_co-ww013.
+    lv_13 = lv_13+0(8).
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'  "前缀去零
+      EXPORTING
+        input  = lv_12
+      IMPORTING
+        output = lv_12.
+    gt_co-zd012 = lv_12.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'  "前缀去零
+      EXPORTING
+        input  = lv_13
+      IMPORTING
+        output = lv_13.
+    gt_co-zd013 = lv_13.
+    IF gt_co-vkorg = '1200'.
+      gt_co-vv001 = gt_co-vv002.
+      gt_co-vv002 = 0.
+    ENDIF.
+    gt_co-zvv = gt_co-vv002 + gt_co-vv001.
+
+*    COLLECT gt_co1.
+    DATA log_op TYPE trff_type_c_2.
+
+    CALL FUNCTION 'FIMA_DATE_COMPARE'
+      EXPORTING
+        i_flg_intraday = ' '
+        i_date         = gt_co-budat
+*       i_time         = '000000'
+*       i_sincl        = '0'          "计算期间开始的排除标识
+*       i_sult         = ' '          "计算期间开始的月末标识符
+        i_comp_date    = gt_co-zd013   "比较日期
+*       i_comp_time    = '000000'     "比较时间
+*       i_comp_sincl   = '0'          "计算期间结束的包含标识
+*       i_comp_sult    = ' '          "计算期间结束的月末标识符
+      IMPORTING
+        e_log_op       = log_op.
+
+    IF log_op = 'GT'.
+      DELETE gt_co.
+      CONTINUE.
+    ENDIF.
+
+    DATA:      months TYPE i.
+
+    CALL FUNCTION 'HR_99S_INTERVAL_BETWEEN_DATES'
+      EXPORTING
+        begda    = gt_co-budat   "开始日期
+        endda    = gt_co-zd012    "截止日期
+      IMPORTING
+*       days     = days          "返回天数：266
+*       c_weeks  = weeks         "返回周数：52
+        c_months = months.     "返回月数：12
+*       c_years  = years         "返回年数：1
+*       month_tab = month_tab.    "期间月份首尾日
+    IF months MOD 12 = 0.
+      gt_co-zmonths = months DIV 12.
+    ELSE.
+      gt_co-zmonths = months DIV 12 + 1.
+    ENDIF.
+
+
+    IF months > gv_time.
+      gv_time = months.
+    ENDIF.
+
+    MODIFY gt_co.
+    MOVE-CORRESPONDING gt_co TO gt_co1.
+    APPEND gt_co1.
+  ENDLOOP.
+
+ENDFORM.
+
+FORM frm_getfact .
+  g_fieldfcat:
+    'WW006' '对应主型号' 'WW006' 'CE11000' ,
+    'WW004' '新产品类型' 'WW004' 'CE11000' ,
+    'ZD012' '新品开始时间' 'HZDAT' 'CE11000' ,
+    'ZD013' '新品结束时间' 'HZDAT' 'CE11000' .
+*    'VV02' '第1年国内销售收入（含税）' 'VV002' 'CE11000' ,
+*    'VV01' '第1年国外销售收入（含税）' 'VV001' 'CE11000' ,
+*    'ZVV01' '第1年合计' 'VV001' 'CE11000'
+  .
+  DATA: lv      TYPE int1 VALUE 0, tmp2   TYPE char11,tmp1 TYPE char11,tmp3 TYPE char12, lv_num TYPE char1,lv_text TYPE char18.
+  gv_time = gv_time div 12 + 1.
+  DO gv_time TIMES.
+    lv_num = lv .
+    CONCATENATE 'VV' lv_num '2' INTO tmp1.
+    CONCATENATE 'VV' lv_num '1' INTO tmp2.
+    CONCATENATE 'ZVV0' lv_num INTO tmp3.
+    gt_fcat-fieldname = tmp1.
+    lv_num = lv + 1.
+    CONCATENATE '第' lv_num '年国内销售收入（含税）' INTO  lv_text.
+    gt_fcat-seltext_m = lv_text.
+    gt_fcat-ddictxt = 'M'.
+    gt_fcat-ref_fieldname =  'VV001'.
+    gt_fcat-ref_tabname = 'CE11000'.
+    APPEND gt_fcat.
+    gt_fcat-fieldname = tmp2.
+    CONCATENATE '第' lv_num '年国外销售收入（含税）' INTO  lv_text.
+    gt_fcat-seltext_m = lv_text.
+    gt_fcat-ddictxt = 'M'.
+    gt_fcat-ref_fieldname =  'VV001'.
+    gt_fcat-ref_tabname = 'CE11000'.
+    APPEND gt_fcat.
+    gt_fcat-fieldname = tmp3.
+
+    CONCATENATE '第' lv_num '年合计' INTO  lv_text.
+    gt_fcat-seltext_m = lv_text.
+    gt_fcat-ddictxt = 'M'.
+    gt_fcat-ref_fieldname =  'VV001'.
+    gt_fcat-ref_tabname = 'CE11000'.
+    APPEND gt_fcat.
+    lv = lv + 1.
+    CLEAR: lv_text,lv_num.
+  ENDDO.
+  gs_layout-colwidth_optimize = 'X'.
+*  gs_layout-box_fieldname = 'CHK'.
+*  gs_layout-box_tabname = 'gt_co'.
+*  gs_layout-edit = 'X'.
+  gs_layout-zebra = 'X'.
+
+ENDFORM.
+
+FORM frm_show."ALV显示界面
+
+
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'ALV_USER_COMMAND'
+      is_layout                = gs_layout
+      it_fieldcat              = gt_fcat[]
+    TABLES
+      t_outtab                 = gt_co2[]
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_PROCESSDATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_processdata .
+  DATA: tmp2   TYPE char11,tmp1 TYPE char11,tmp3 TYPE char12, lv_num TYPE char1,lv TYPE int1.
+  FIELD-SYMBOLS: <f1> TYPE any .
+  FIELD-SYMBOLS: <f2> TYPE any .
+  FIELD-SYMBOLS: <f3> TYPE any .
+
+  LOOP AT gt_co1.
+    lv_num = gt_co1-zmonths .
+
+    CONCATENATE 'GT_CO1-VV' lv_num '2' INTO tmp1.
+    CONCATENATE 'GT_CO1-VV' lv_num '1' INTO tmp2.
+    CONCATENATE 'GT_CO1-ZVV0' lv_num INTO tmp3.
+    ASSIGN (tmp1) TO <f1>.
+    ASSIGN (tmp2) TO <f2>.
+    ASSIGN (tmp3) TO <f3>.
+    <f1> =  gt_co1-vv002   .
+    <f2> =  gt_co1-vv001 .
+    <f3> =  gt_co1-zvv  .
+    MODIFY gt_co1.
+    COLLECT gt_co1 INTO gt_co2.
+  ENDLOOP.
+ENDFORM.

@@ -1,0 +1,177 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPMM001_F01
+*&---------------------------------------------------------------------*
+
+
+
+FORM set_pf_status USING rt_extab TYPE slis_t_extab.
+
+  DATA: wa_extab TYPE slis_extab.
+
+  SET PF-STATUS '0100' EXCLUDING rt_extab.
+
+ENDFORM.                    "set_pf_status1
+
+FORM alv_user_command USING r_ucomm LIKE sy-ucomm  rs_selfield TYPE slis_selfield.
+
+  DATA: lv_grid TYPE REF TO cl_gui_alv_grid.
+
+  rs_selfield-refresh = 'X'.
+  rs_selfield-col_stable = 'X'.
+  rs_selfield-row_stable = 'X'.
+
+*  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+*    IMPORTING
+*      e_grid = lv_grid.
+*
+*  CALL METHOD lv_grid->check_changed_data( ).
+
+*  CASE r_ucomm.
+*    WHEN 'ZCLICK'.
+*      PERFORM frm_print.
+*    WHEN '&IC1'.
+*      IF rs_selfield-fieldname EQ 'VGBEL' AND rs_selfield-value IS NOT INITIAL.
+*        SET PARAMETER ID 'BES' FIELD rs_selfield-value.
+*        CALL TRANSACTION 'ME23N' AND SKIP FIRST SCREEN.
+*      ENDIF.
+*      IF rs_selfield-fieldname EQ 'VBELN' AND rs_selfield-value IS NOT INITIAL.
+*        SET PARAMETER ID 'VL' FIELD rs_selfield-value.
+*        CALL TRANSACTION 'VL03N' AND SKIP FIRST SCREEN.
+*      ENDIF.
+*  ENDCASE.
+
+
+ENDFORM.                    "alv_user_command
+
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GETDATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_getdata .
+
+  SELECT
+       a~matnr
+       a~mtart
+       a~matkl
+       a~bismt
+       a~meins
+       a~spart
+       b~bklas
+       b~hrkft
+       b~vprsv
+       b~mlast
+       b~lplpr
+       b~zplp1
+       b~zpld1
+       b~mlmaa
+       b~ekalr
+       b~hkmat
+       d~beskz
+       d~sobsl
+       d~awsls
+       d~ncost
+       INTO CORRESPONDING FIELDS OF TABLE gt_co
+        FROM mara AS a JOIN mbew AS b ON a~matnr EQ b~matnr
+*        JOIN macku AS c ON a~matnr EQ c~matnr
+        JOIN marc AS d ON b~matnr EQ d~matnr AND b~bwkey = d~werks
+        WHERE a~mtart IN s_mtart
+          AND b~bwkey = p_bwkey
+          AND b~lfgja = p_lfgja
+          AND b~lfmon = p_lfmon
+          AND a~matkl IN s_matkl
+          AND b~matnr IN s_matnr
+          AND b~bklas IN s_bklas
+    .
+
+
+  CHECK gt_co[] IS NOT INITIAL.
+
+  LOOP AT gt_co.
+
+    SELECT SINGLE maktx INTO  gt_co-maktx FROM makt  WHERE matnr = gt_co-matnr AND spras = 1.
+
+    SELECT SINGLE mtbez INTO  gt_co-mtbez FROM t134t WHERE mtart = gt_co-mtart AND spras = 1.
+
+    SELECT SINGLE wgbez INTO  gt_co-wgbez FROM t023t WHERE matkl = gt_co-matkl AND spras = 1.
+
+    SELECT SINGLE vtext INTO  gt_co-vtext FROM tspat WHERE spart = gt_co-spart AND spras = 1.
+
+    SELECT SINGLE ltext INTO  gt_co-ltext FROM t460t WHERE sobsl = gt_co-sobsl AND spras = 1.
+
+    SELECT SINGLE bkbez INTO  gt_co-bkbez FROM t025t WHERE bklas = gt_co-bklas AND spras = 1.
+
+    SELECT SINGLE hrktx  INTO gt_co-hrktx FROM tkkh2 WHERE hrkft = gt_co-hrkft AND spras = 1.
+
+    MODIFY gt_co.
+
+  ENDLOOP.
+
+ENDFORM.
+
+FORM frm_getfact .
+  g_fieldfcat:
+
+    'MATNR' '物料' 'MATNR' 'MBEW' ,
+    'MAKTX' '物料描述' 'MAKTX' 'MAKT' ,
+    'MTART' '物料类型' 'MTART' 'MARA' ,
+    'MTBEZ' '类型描述' 'MTBEZ' 'T134T',
+    'MATKL' '物料组' 'MATKL' 'MARA',
+    'WGBEZ' '类型描述' 'WGBEZ' 'T023T',
+    'BISMT' '旧的物料编号' 'BISMT' 'MARA',
+    'MEINS' '基本计量单位' 'MEINS' 'MARA',
+    'SPART' '产品组' 'SPART' 'MARA',
+    'VTEXT' '产品组描述' 'VTEXT' 'TSPAT',
+    'BESKZ' '采购' 'BESKZ' 'MARC',
+    'SOBSL' '特殊采购' 'SOBSL' 'MARC',
+    'LTEXT' '特殊采购说明' 'LTEXT' 'T460T',
+    'BKLAS' '评估类型' 'BKLAS' 'MBEW',
+    'BKBEZ' '类型描述' 'BKBEZ' 'T025T',
+    'HRKFT' '原始组' 'HRKFT' 'MBEW',
+    'HRKTX' '原始组描述' 'HRKTX' 'TKKH2',
+    'VPRSV' '价格控制' 'VPRSV' 'MBEW',
+    'MLAST' '价格确定' 'MLAST' 'MBEW',
+    'LPLPR' '标准价格' 'LPLPR' 'MBEW',
+    'ZPLP1' '计划价格1' 'ZPLP1' 'MBEW',
+    'ZPLD1' '计划价格日期1' 'ZPLD1' 'MBEW',
+    'MLMAA' 'ML作业' 'MLMAA' 'MBEW',
+    'EKALR' 'QS成本估算' 'EKALR' 'MBEW',
+    'HKMAT' '物价来源' 'HKMAT' 'MBEW',
+    'AWSLS' '差异码' 'AWSLS' 'MARC',
+    'NCOST' '无成本核算' 'NCOST' 'MARC'
+
+
+  .
+  gs_layout-colwidth_optimize = 'X'.
+*  gs_layout-box_fieldname = 'CHK'.
+*  gs_layout-box_tabname = 'gt_co'.
+*  gs_layout-edit = 'X'.
+  gs_layout-zebra = 'X'.
+
+ENDFORM.
+
+FORM frm_show."ALV显示界面
+
+
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'SET_PF_STATUS'
+      i_callback_user_command  = 'ALV_USER_COMMAND'
+      is_layout                = gs_layout
+      it_fieldcat              = gt_fcat[]
+    TABLES
+      t_outtab                 = gt_co[]
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM.

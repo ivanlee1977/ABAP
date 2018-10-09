@@ -1,0 +1,8 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPCO017S01
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK blc WITH FRAME TITLE TEXT-001.
+  PARAMETERS:p_bukrs Like bsis-bukrs OBLIGATORY DEFAULT '1000',
+             p_gjahr LIKE BSIS-GJAHR OBLIGATORY DEFAULT sy-datum(4),
+             p_monat LIKE bsis-monat OBLIGATORY DEFAULT sy-datum+4(2).
+SELECTION-SCREEN END OF BLOCK blc.

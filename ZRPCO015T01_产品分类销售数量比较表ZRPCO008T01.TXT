@@ -1,0 +1,16 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO008T01
+*&---------------------------------------------------------------------*
+TABLES:ce11000.
+
+DATA : BEGIN OF gw_out,
+         gjahr LIKE ce11000-gjahr, "年度
+         perde LIKE ce11000-perde, "期间
+         absmg LIKE ce11000-absmg, "销售数量
+         ww001 LIKE ce11000-ww001, "产品分类
+       END OF gw_out.
+
+DATA:gt_out     LIKE gw_out OCCURS 0 WITH HEADER LINE,
+     gt_out_col LIKE gw_out OCCURS 0 WITH HEADER LINE.
+
+CONSTANTS:gcst_excel_template TYPE w3objid VALUE 'ZCO015'.

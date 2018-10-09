@@ -1,0 +1,297 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO007F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_INITIAL_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_initial_data .
+*******数据定义*******
+  INCLUDE <icon>.
+  DATA ls_functxt TYPE smp_dyntxt.
+  DATA:gt_exbut TYPE TABLE OF sy-ucomm.
+*******初始化*******
+*******程序主体*******
+  "屏幕工具栏中按饼
+  "启用自定义工具
+  CLEAR ls_functxt.
+  ls_functxt-icon_text = '区域维护'."'Download Template'.
+  ls_functxt-icon_id   = '@HB@'.
+  ls_functxt-quickinfo =  '区域维护'.
+  sscrfields-functxt_01 = ls_functxt.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_MAINTAIN_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_maintain_data .
+  CALL FUNCTION 'VIEW_MAINTENANCE_CALL'
+    EXPORTING
+      action                         = 'U'
+*     CORR_NUMBER                    = '          '
+      generate_maint_tool_if_missing = 'X'
+*     SHOW_SELECTION_POPUP           = ' '
+      view_name                      = 'ZTCO007'
+*     NO_WARNING_FOR_CLIENTINDEP     = ' '
+*     RFC_DESTINATION_FOR_UPGRADE    = ' '
+*     CLIENT_FOR_UPGRADE             = ' '
+*     VARIANT_FOR_SELECTION          = ' '
+*     COMPLEX_SELCONDS_USED          = ' '
+*     CHECK_DDIC_MAINFLAG            = ' '
+*     SUPPRESS_WA_POPUP              = ' '
+* TABLES
+*     DBA_SELLIST                    =
+*     EXCL_CUA_FUNCT                 =
+    EXCEPTIONS
+      client_reference               = 1
+      foreign_lock                   = 2
+      invalid_action                 = 3
+      no_clientindependent_auth      = 4
+      no_database_function           = 5
+      no_editor_function             = 6
+      no_show_auth                   = 7
+      no_tvdir_entry                 = 8
+      no_upd_auth                    = 9
+      only_show_allowed              = 10
+      system_failure                 = 11
+      unknown_field_in_dba_sellist   = 12
+      view_not_found                 = 13
+      maintenance_prohibited         = 14
+      OTHERS                         = 15.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_ce11000 LIKE ce11000 OCCURS 0 WITH HEADER LINE.
+  DATA:lv_max TYPE ztco002-zsort.
+  DATA:lt_ztco007       LIKE ztco007 OCCURS 0 WITH HEADER LINE,
+       lt_ztco007_temp  LIKE ztco007 OCCURS 0 WITH HEADER LINE,
+       lt_ztco007_temp1 LIKE ztco007 OCCURS 0 WITH HEADER LINE.
+  DATA:lv_line TYPE i.
+
+***抓取配置表数据
+  SELECT * INTO TABLE lt_ztco007 FROM ztco007.
+  IF sy-subrc NE 0.
+    MESSAGE '请先维护区域对应关系配置表信息' TYPE 'E'.
+*  ELSE.
+*    APPEND LINES OF lt_ztco007 TO lt_ztco007_temp.
+*    APPEND LINES OF lt_ztco007 TO lt_ztco007_temp1.
+*    SORT lt_ztco007_temp BY zarea zsort.
+*    SORT lt_ztco007_temp1 BY zarea zsort.
+*    DELETE ADJACENT DUPLICATES FROM lt_ztco007_temp COMPARING zarea.
+*    DELETE ADJACENT DUPLICATES FROM lt_ztco007_temp1 COMPARING zarea zsort.
+*    IF lines( lt_ztco007_temp ) NE lines( lt_ztco007_temp1 ).
+*      WRITE:'配置表信息维护错误,如下：'.
+*      LOOP AT lt_ztco007_temp.
+*        CLEAR lv_line.
+*        LOOP AT lt_ztco007_temp1 WHERE zarea = lt_ztco007_temp-zarea.
+*          lv_line = lv_line + 1.
+*        ENDLOOP.
+*        IF lv_line > 1.
+**          WRITE:/1(2) lt_ZTCO007_temp1-vkbur, 4(20) lt_ZTCO007_temp1-bezei, 26(20) lt_ZTCO007_temp1-zarea ,48(4) lt_ZTCO007_temp1-zsort.
+*        ENDIF.
+*      ENDLOOP.
+*      STOP.
+*    ENDIF.
+  ENDIF.
+
+***抓取满足条件的CE11000数据
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_ce11000
+    FROM ce11000
+    WHERE bukrs = p_bukrs
+      AND gjahr = p_gjahr
+      AND perde IN s_perde
+      AND paledger EQ '02'.
+
+  CHECK lt_ce11000[] IS NOT INITIAL.
+
+*  SELECT MAX( zsort ) INTO lv_max FROM ztco007.
+
+  LOOP AT lt_ce11000.
+
+*    IF lt_ce11000-ktgrd = '20'. "集团内销售
+*      gt_out-zarea = '海外地区'.
+*      gt_out-zsort = lv_max + 1.
+*      gt_out-zyysr = lt_ce11000-vv001.
+*      IF lt_ce11000-copa_awtyp = 'MLHD'.
+*        gt_out-zyycb = lt_ce11000-vv200 - lt_ce11000-vv207.
+*      ELSE.
+*        gt_out-zyycb = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+*      ENDIF.
+*      COLLECT gt_out.
+*      CLEAR gt_out.
+*    ELSE.
+      READ TABLE lt_ztco007 WITH KEY bzirk = lt_ce11000-bzirk  ktgrd = lt_ce11000-ktgrd.
+      IF sy-subrc = 0.
+        gt_out-zarea = lt_ztco007-zarea.
+        gt_out-zsort = lt_ztco007-zsort.
+        gt_out-zyysr = lt_ce11000-vv001.
+        IF lt_ce11000-copa_awtyp = 'MLHD'.
+          gt_out-zyycb = lt_ce11000-vv200 - lt_ce11000-vv207.
+        ELSE.
+          gt_out-zyycb = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+        ENDIF.
+        COLLECT gt_out.
+        CLEAR gt_out.
+      ENDIF.
+*    ENDIF.
+***合计行
+    gt_out-zarea = '合计'.
+    gt_out-zsort = 99.
+    gt_out-zyysr = lt_ce11000-vv001.
+    IF lt_ce11000-copa_awtyp = 'MLHD'.
+      gt_out-zyycb = lt_ce11000-vv200 - lt_ce11000-vv207.
+    ELSE.
+      gt_out-zyycb = lt_ce11000-vv200 + lt_ce11000-vv215 - lt_ce11000-vv207.
+    ENDIF.
+    COLLECT gt_out.
+    CLEAR gt_out.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  DATA:ls_key   TYPE wwwdatatab,
+       lv_subrc TYPE sy-subrc.
+  DATA lv_file LIKE rlgrap-filename.
+
+  CONCATENATE 'C:\CO\' sy-title '-'   sy-datum '.xls' INTO lv_file.
+
+  ls_key-relid = 'MI'.
+  ls_key-objid = gcst_excel_template.
+  CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'
+    EXPORTING
+      key         = ls_key
+      destination = lv_file
+    IMPORTING
+      rc          = lv_subrc.
+  IF lv_subrc <> 0.
+    MESSAGE '下载模板出错，请检查，谢谢' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+
+***填充EXCEL数据
+  PERFORM frm_filldata_excel USING lv_file.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FILLDATA_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_FILE  text
+*----------------------------------------------------------------------*
+FORM frm_filldata_excel  USING iv_file TYPE rlgrap-filename.
+*******数据定义*******
+  DATA:lo_excel     TYPE ole2_object,
+       lo_workbooks TYPE ole2_object,
+       lo_workbook  TYPE ole2_object,
+       lo_sheet     TYPE ole2_object,
+       lo_range     TYPE ole2_object,
+       lo_cell      TYPE ole2_object,
+       lo_cell1     TYPE ole2_object.
+  DATA lv_file LIKE rlgrap-filename.
+
+  DATA lv_row TYPE i.
+  DATA lv_col TYPE i.
+
+  DEFINE mac_fill_cell.
+    CALL METHOD OF lo_sheet 'CELLS' = lo_cell
+      EXPORTING
+        #1 = &1
+        #2 = &2.
+    SET PROPERTY OF lo_cell 'VALUE' = &3.
+  END-OF-DEFINITION.
+
+  DATA:lv_srzb  TYPE p DECIMALS 2,
+       lv_ml    TYPE p DECIMALS 2,
+       lv_ml_hj TYPE p DECIMALS 2,
+       lv_mlzb  TYPE p DECIMALS 2.
+  DATA:ls_data LIKE LINE OF gt_out.
+
+  DATA:lv_text_ny TYPE string,
+       lv_text_dw TYPE string.
+  DATA:lv_butxt LIKE t001-butxt.
+*******程序主体*******
+
+*填充excel
+  CREATE OBJECT lo_excel 'EXCEL.APPLICATION'.
+  CALL METHOD OF lo_excel 'WORKBOOKS' = lo_workbooks.
+  CALL METHOD OF lo_workbooks 'OPEN' = lo_workbook EXPORTING #1 = iv_file.
+  CALL METHOD OF lo_workbook 'WORKSHEETS' = lo_sheet EXPORTING #1 = 1.
+
+***年月
+  IF s_perde-high IS INITIAL.
+    CONCATENATE p_gjahr '年' s_perde-low+1(2) '月' INTO lv_text_ny.
+  ELSE.
+    CONCATENATE p_gjahr '年' s_perde-low+1(2) '月 到 ' p_gjahr '年' s_perde-high+1(2) '月' INTO lv_text_ny.
+  ENDIF.
+  mac_fill_cell 3 1  lv_text_ny.  "年月
+
+***编制单位
+  SELECT SINGLE butxt INTO lv_butxt FROM t001 WHERE bukrs = p_bukrs.
+  CONCATENATE '编制单位:' lv_butxt INTO lv_text_dw.
+  mac_fill_cell 4 1  lv_text_dw.
+
+  SORT gt_out BY zsort zarea.
+
+  CLEAR ls_data.
+  READ TABLE gt_out WITH KEY zarea = '合计' INTO ls_data.
+  lv_ml_hj = ls_data-zyysr - ls_data-zyycb.
+
+  "数值
+  lv_row = 6.
+  LOOP AT gt_out.
+    mac_fill_cell lv_row 1  gt_out-zarea.  "行业名称
+    mac_fill_cell lv_row 2  gt_out-zyysr.  "营业收入
+    mac_fill_cell lv_row 4  gt_out-zyycb.  "营业成本
+***收入占比
+    CLEAR:lv_srzb,lv_ml,lv_mlzb.
+    IF ls_data-zyysr NE 0.
+      lv_srzb = gt_out-zyysr / ls_data-zyysr.
+      mac_fill_cell lv_row 3  lv_srzb.     "收入占比
+    ENDIF.
+***毛利
+    lv_ml = gt_out-zyysr - gt_out-zyycb.
+    mac_fill_cell lv_row  5  lv_ml.        "收入占比
+***毛利占比
+    IF lv_ml_hj NE 0.
+      lv_mlzb = lv_ml / lv_ml_hj.
+      mac_fill_cell lv_row  6  lv_mlzb.    "毛利占比
+    ENDIF.
+    lv_row = lv_row + 1.
+  ENDLOOP.
+
+  CALL METHOD OF lo_sheet 'CELLS' = lo_cell EXPORTING #1 = 1 #2 = 1.
+  CALL METHOD OF lo_cell 'SELECT'.
+  SET PROPERTY OF lo_excel 'CutCopyMode' = 0.
+
+  CALL METHOD OF lo_workbook 'SAVE'.
+  SET PROPERTY OF lo_excel 'VISIBLE' = 1.
+  FREE OBJECT:lo_excel,lo_workbooks,lo_workbook,lo_sheet,lo_range,lo_cell.
+ENDFORM.

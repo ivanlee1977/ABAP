@@ -1,0 +1,232 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO012F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_ce11000 LIKE ce11000 OCCURS 0 WITH HEADER LINE.
+***抓取满足条件的数据
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_ce11000
+    FROM ce11000
+   WHERE bukrs = p_bukrs
+     AND gjahr = p_gjahr
+     AND perde IN s_perde
+     AND paledger EQ '02'.
+
+  LOOP AT lt_ce11000.
+    IF lt_ce11000-copa_awtyp = 'MLHD'.
+      CLEAR:lt_ce11000-vv215.
+    ENDIF.
+    MOVE-CORRESPONDING lt_ce11000 TO gt_out.
+    gt_out-zxscb = gt_out-vv200 + gt_out-vv215 - gt_out-vv207.
+    COLLECT gt_out.
+    CLEAR gt_out.
+  ENDLOOP.
+
+  LOOP AT gt_out WHERE absmg NE 0.
+    gt_out-zdwcb = gt_out-zxscb / gt_out-absmg.
+    gt_out-vv201 = gt_out-vv201 / gt_out-absmg.
+    gt_out-vv202 = gt_out-vv202 / gt_out-absmg.
+    gt_out-vv203 = gt_out-vv203 / gt_out-absmg.
+    gt_out-vv204 = gt_out-vv204 / gt_out-absmg.
+    gt_out-vv205 = gt_out-vv205 / gt_out-absmg.
+    gt_out-vv206 = gt_out-vv206 / gt_out-absmg.
+    gt_out-vv207 = gt_out-vv207 / gt_out-absmg.
+    gt_out-vv208 = gt_out-vv208 / gt_out-absmg.
+    gt_out-vv209 = gt_out-vv209 / gt_out-absmg.
+    gt_out-vv210 = gt_out-vv210 / gt_out-absmg.
+    gt_out-vv211 = gt_out-vv211 / gt_out-absmg.
+    gt_out-vv212 = gt_out-vv212 / gt_out-absmg.
+    gt_out-vv213 = gt_out-vv213 / gt_out-absmg.
+    gt_out-vv214 = gt_out-vv214 / gt_out-absmg.
+    gt_out-vv215 = gt_out-vv215 / gt_out-absmg.
+    gt_out-vv216 = gt_out-vv216 / gt_out-absmg.
+    MODIFY gt_out.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+********数据定义*******
+  DATA:lv_file   TYPE string,
+       lv_result TYPE c. "标识: 空表示文件不存在;否则,表示存在
+  DATA lv_answer TYPE c.
+  DATA:li_lines TYPE i.
+  DATA:ls_key   TYPE wwwdatatab,
+       lv_subrc TYPE sy-subrc.
+  DATA lv_file1 LIKE rlgrap-filename.
+*******初始化*******
+*******程序主体*******
+
+  CONCATENATE 'C:\CO\' sy-title '-'   sy-datum '.xls' INTO lv_file.
+
+  CALL METHOD cl_gui_frontend_services=>file_exist
+    EXPORTING
+      file                 = lv_file
+    RECEIVING
+      result               = lv_result
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      wrong_parameter      = 3
+      not_supported_by_gui = 4
+      OTHERS               = 5.
+  IF lv_result IS NOT  INITIAL. "文件已经存在
+    CALL FUNCTION 'POPUP_TO_CONFIRM'
+      EXPORTING
+        titlebar              = '请确认'
+        text_question         = '文件已经存在，是否要覆盖?'
+        text_button_1         = '是'
+        text_button_2         = '否'
+        default_button        = '2' "缺省选中按钮: 1 是; 2 否
+        display_cancel_button = ''  "标识: 为空,不显示 取消按钮
+      IMPORTING
+        answer                = lv_answer "标识： 1 是;
+      EXCEPTIONS
+        text_not_found        = 1
+        OTHERS                = 2.
+    IF lv_answer NE '1'.
+      EXIT.
+    ENDIF.
+  ENDIF.
+
+  ls_key-relid = 'MI'.
+  ls_key-objid = gcst_excel_template.
+  lv_file1 = lv_file.
+  CALL FUNCTION 'DOWNLOAD_WEB_OBJECT'
+    EXPORTING
+      key         = ls_key
+      destination = lv_file1
+    IMPORTING
+      rc          = lv_subrc.
+  IF lv_subrc <> 0.
+    MESSAGE '下载模板出错，请检查，谢谢' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+***填充EXCEL数据
+  PERFORM frm_filldata_excel USING lv_file.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FILLDATA_EXCEL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LV_FILE  text
+*----------------------------------------------------------------------*
+FORM frm_filldata_excel USING iv_file TYPE string.
+*******数据定义*******
+  DATA:lo_excel     TYPE ole2_object,
+       lo_workbooks TYPE ole2_object,
+       lo_workbook  TYPE ole2_object,
+       lo_sheet     TYPE ole2_object,
+       lo_range     TYPE ole2_object,
+       lo_cell      TYPE ole2_object,
+       lo_cell1     TYPE ole2_object.
+  DATA lv_value TYPE char200.
+  DATA:lv_str TYPE string.
+  DATA:lv_butxt LIKE t001-butxt.
+
+  DATA lv_row TYPE i.
+  DATA lv_col TYPE i.
+
+  DEFINE mac_fill_cell.
+    CALL METHOD OF lo_sheet 'CELLS' = lo_cell
+      EXPORTING
+        #1 = &1
+        #2 = &2.
+    SET PROPERTY OF lo_cell 'VALUE' = &3.
+  END-OF-DEFINITION.
+
+*******程序主体*******
+
+*填充excel
+  CREATE OBJECT lo_excel 'EXCEL.APPLICATION'.
+  CALL METHOD OF lo_excel 'WORKBOOKS' = lo_workbooks.
+  CALL METHOD OF lo_workbooks 'OPEN' = lo_workbook EXPORTING #1 = iv_file.
+  CALL METHOD OF lo_workbook 'WORKSHEETS' = lo_sheet EXPORTING #1 = 1.
+
+  IF s_perde-high IS INITIAL.
+    CONCATENATE p_gjahr '年' s_perde-low+1(2) '月到' p_gjahr '年' s_perde-low+1(2) '月' INTO lv_str.
+  ELSE.
+    CONCATENATE p_gjahr '年' s_perde-low+1(2) '月到' p_gjahr '年' s_perde-high+1(2) '月' INTO lv_str.
+  ENDIF.
+  mac_fill_cell 2 'I' lv_str.
+
+  SELECT SINGLE butxt INTO lv_butxt FROM t001 WHERE bukrs = p_bukrs.
+  CONCATENATE '编制单位:' lv_butxt INTO lv_str.
+  mac_fill_cell 2 1 lv_str.
+  "数值
+  LOOP AT gt_out.
+    CASE gt_out-ww001.
+      WHEN '1000'.  "步进驱动器
+        lv_row = 6.
+      WHEN '1001'.  "中低压伺服驱动器
+        lv_row = 7.
+      WHEN '1002'.  "简易伺服驱动器
+        lv_row = 8.
+      WHEN '1003'.  "高压伺服驱动器
+        lv_row = 9.
+      WHEN '1004'.  "步进电机
+        lv_row = 10.
+      WHEN '1005'.  "中低压伺服电机
+        lv_row = 11.
+      WHEN '1006'.  "高压伺服电机
+        lv_row = 12.
+      WHEN '1007'.  "混合伺服电机
+        lv_row = 13.
+      WHEN '1008'.  "智能一体电机
+        lv_row = 14.
+      WHEN '1009'.  "通用控制卡（器）
+        lv_row = 15.
+      WHEN '1011'.  "进口贸易品
+        lv_row = 16.
+      WHEN '1012'.  "电源
+        lv_row = 17.
+      WHEN '1013'.  "配线
+        lv_row = 18.
+      WHEN OTHERS.  "其它
+        lv_row = 19.
+    ENDCASE.
+    mac_fill_cell lv_row 'C'  gt_out-absmg.  "销售数量
+    mac_fill_cell lv_row 'D'  gt_out-vv001.  "销售收入
+    mac_fill_cell lv_row 'E'  gt_out-zxscb.  "销售成本
+    mac_fill_cell lv_row 'F'  gt_out-zdwcb.  "单位成本
+    mac_fill_cell lv_row 'G'  gt_out-vv201.  "实际-电阻电容
+    mac_fill_cell lv_row 'H'  gt_out-vv202.  "实际-二三极管
+    mac_fill_cell lv_row 'I'  gt_out-vv203.  "实际-端子插座
+    mac_fill_cell lv_row 'J'  gt_out-vv204.  "实际-IC
+    mac_fill_cell lv_row 'K'  gt_out-vv205.  "实际-PCB板
+    mac_fill_cell lv_row 'L'  gt_out-vv206.  "实际-结构件
+    mac_fill_cell lv_row 'M'  gt_out-vv216.  "实际-电机
+    mac_fill_cell lv_row 'N'  gt_out-vv208.  "实际-其他类
+    mac_fill_cell lv_row 'O'  gt_out-vv209.  "委外加工费
+    mac_fill_cell lv_row 'P'  gt_out-vv210.  "实际-人工及福利
+    mac_fill_cell lv_row 'Q'  gt_out-vv211.  "实际-租赁费
+    mac_fill_cell lv_row 'R'  gt_out-vv212.  "实际-折旧摊销
+    mac_fill_cell lv_row 'S'  gt_out-vv213.  "实际-水电
+    mac_fill_cell lv_row 'T'  gt_out-vv214.  "实际-其他制费
+    mac_fill_cell lv_row 'U'  gt_out-vv215.  "录入成本
+  ENDLOOP.
+
+  CALL METHOD OF lo_sheet 'CELLS' = lo_cell EXPORTING #1 = 1 #2 = 1.
+  CALL METHOD OF lo_cell 'SELECT'.
+  SET PROPERTY OF lo_excel 'CutCopyMode' = 0.
+
+  CALL METHOD OF lo_workbook 'SAVE'.
+  SET PROPERTY OF lo_excel 'VISIBLE' = 1.
+  FREE OBJECT:lo_excel,lo_workbooks,lo_workbook,lo_sheet,lo_range,lo_cell.
+ENDFORM.

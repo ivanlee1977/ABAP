@@ -1,0 +1,340 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO022F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA:lt_ce11000 LIKE ce11000 OCCURS 0 WITH HEADER LINE,
+       lt_tkkh2   LIKE tkkh2 OCCURS 0 WITH HEADER LINE.
+  DATA:BEGIN OF lt_t001k OCCURS 0,
+         bwkey LIKE t001k-bwkey,
+         bukrs LIKE t001k-bukrs,
+       END OF lt_t001k.
+  DATA:BEGIN OF lt_aufm OCCURS 0,
+         mblnr LIKE aufm-mblnr,
+         mjahr LIKE aufm-mjahr,
+         zeile LIKE aufm-zeile,
+         budat LIKE aufm-budat,
+         bwart LIKE aufm-bwart,
+         matnr LIKE aufm-matnr,
+         werks LIKE aufm-werks,
+         menge LIKE aufm-menge,
+         aufnr LIKE aufm-aufnr,
+       END OF lt_aufm.
+  DATA:BEGIN OF lt_mbew OCCURS 0,
+         matnr LIKE mbew-matnr,
+         bwkey LIKE mbew-bwkey,
+         hrkft LIKE mbew-hrkft,
+       END OF lt_mbew.
+  DATA:lv_date_from LIKE sy-datum,
+       lv_date_to   LIKE sy-datum.
+  DATA:lv_date_from1 LIKE sy-datum,
+       lv_date_to1   LIKE sy-datum.
+  DATA:lv_last_year(4) TYPE c.
+
+  DATA:ls_data_a LIKE LINE OF gt_out,
+       ls_data_b LIKE LINE OF gt_out,
+       ls_data_c LIKE LINE OF gt_out.
+  DATA:lt_data LIKE gt_out OCCURS 0 WITH HEADER LINE.
+
+***抓取产品分类数据
+  SELECT * INTO TABLE lt_tkkh2 FROM tkkh2 WHERE spras = sy-langu AND kokrs = '1000'.
+
+  lv_last_year = p_gjahr - 1.
+
+***抓取销量数据
+  SELECT *
+    INTO CORRESPONDING FIELDS OF TABLE lt_ce11000
+    FROM ce11000
+    WHERE bukrs = p_bukrs
+     AND gjahr  IN ( p_gjahr,lv_last_year )
+     AND perde  IN s_perde
+     AND paledger = '02'.
+
+  SORT lt_tkkh2 BY hrkft.
+
+  LOOP AT lt_ce11000.
+    gt_out-hrkft = lt_ce11000-ww001.
+    READ TABLE lt_tkkh2 WITH KEY hrkft = lt_ce11000-ww001 BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-hrktx = lt_tkkh2-hrktx.
+    ENDIF.
+    gt_out-ztype = 'B'. "销量
+    IF lt_ce11000-gjahr = p_gjahr.
+      gt_out-zbntq = lt_ce11000-absmg.
+    ELSE.
+      gt_out-zsntq = lt_ce11000-absmg.
+    ENDIF.
+    COLLECT gt_out.
+***合计数量
+    gt_out-hrkft = '9999'.
+    gt_out-hrktx = '合计'.
+    COLLECT gt_out.
+    CLEAR gt_out.
+  ENDLOOP.
+
+***抓取产量数据
+  CONCATENATE p_gjahr s_perde-low+1(2) '01' INTO lv_date_from.
+  IF s_perde-high IS INITIAL.
+    lv_date_to = lv_date_from.
+  ELSE.
+    CONCATENATE p_gjahr s_perde-high+1(2) '01' INTO lv_date_to.
+  ENDIF.
+  CALL FUNCTION 'FKK_LAST_DAY_OF_MONTH'
+    EXPORTING
+      day_in            = lv_date_to
+    IMPORTING
+      last_day_of_month = lv_date_to
+    EXCEPTIONS
+      day_in_no_date    = 1
+      OTHERS            = 2.
+
+  lv_date_from1 = lv_date_from.
+  lv_date_to1 =  lv_date_to.
+  MOVE lv_last_year TO lv_date_from1(4).
+  MOVE lv_last_year TO lv_date_to1(4).
+
+  SELECT bwkey
+         bukrs
+    INTO CORRESPONDING FIELDS OF TABLE lt_t001k
+    FROM t001k
+    WHERE bukrs = p_bukrs.
+
+  IF lt_t001k[] IS NOT INITIAL.
+    SELECT a~mblnr
+           a~mjahr
+           a~zeile
+           a~budat
+           a~bwart
+           a~matnr
+           a~werks
+           a~menge
+           a~aufnr
+      INTO CORRESPONDING FIELDS OF TABLE lt_aufm
+      FROM aufm AS a
+      INNER JOIN aufk AS b
+      ON a~aufnr = b~aufnr
+      FOR ALL ENTRIES IN lt_t001k
+      WHERE a~werks = lt_t001k-bwkey
+        AND ( a~budat BETWEEN lv_date_from AND lv_date_to OR a~budat BETWEEN lv_date_from1 AND lv_date_to1 )
+        AND a~bwart IN ('101','102')
+        AND b~auart NE 'F001'.
+  ENDIF.
+
+  IF lt_aufm[] IS NOT INITIAL.
+    SELECT matnr
+           bwkey
+           hrkft
+      INTO CORRESPONDING FIELDS OF TABLE lt_mbew
+      FROM mbew
+      FOR ALL ENTRIES IN lt_aufm
+      WHERE matnr = lt_aufm-matnr
+        AND bwkey = lt_aufm-werks.
+  ENDIF.
+
+  SORT lt_mbew BY matnr bwkey.
+  LOOP AT lt_aufm.
+    READ TABLE lt_mbew WITH KEY matnr = lt_aufm-matnr bwkey = lt_aufm-werks BINARY SEARCH.
+    IF sy-subrc = 0.
+      gt_out-hrkft = lt_mbew-hrkft.
+      READ TABLE lt_tkkh2 WITH KEY hrkft = gt_out-hrkft BINARY SEARCH.
+      IF sy-subrc = 0.
+        gt_out-hrktx = lt_tkkh2-hrktx.
+      ENDIF.
+    ENDIF.
+    gt_out-ztype = 'A'. "产量
+    IF lt_aufm-bwart = '102'.
+      lt_aufm-menge = -1 * lt_aufm-menge.
+    ENDIF.
+    IF lt_aufm-budat BETWEEN lv_date_from AND lv_date_to. "本年
+      gt_out-zbntq = lt_aufm-menge.
+    ELSE.
+      gt_out-zsntq = lt_aufm-menge.
+    ENDIF.
+    COLLECT gt_out.
+***合计数量
+    gt_out-hrkft = '9999'.
+    gt_out-hrktx = '合计'.
+    COLLECT gt_out.
+    CLEAR gt_out.
+  ENDLOOP.
+
+  SORT gt_out BY hrkft ztype.
+  LOOP AT gt_out ASSIGNING <fs_out>.
+    AT NEW hrkft.
+      CLEAR:ls_data_a,ls_data_b,ls_data_c.
+    ENDAT.
+    CASE <fs_out>-ztype.
+      WHEN 'A'. "产量
+        MOVE-CORRESPONDING <fs_out> TO ls_data_a.
+      WHEN 'B'. "销量
+        MOVE-CORRESPONDING <fs_out> TO ls_data_b.
+      WHEN OTHERS.
+    ENDCASE.
+    IF <fs_out>-zbntq NE 0.
+      <fs_out>-zzj = ( <fs_out>-zbntq - <fs_out>-zsntq ) / <fs_out>-zbntq * 100.
+    ENDIF.
+    AT END OF hrkft.
+***防止某些数据只有产量没有销量，或者只有销量没有产量信息的
+      IF ls_data_a IS INITIAL.
+        ls_data_a-hrkft = <fs_out>-hrkft.
+        ls_data_a-hrktx = <fs_out>-hrktx.
+        ls_data_a-ztype = 'A'.
+        APPEND ls_data_a TO lt_data.
+      ENDIF.
+      IF ls_data_b IS INITIAL.
+        ls_data_b-hrkft = <fs_out>-hrkft.
+        ls_data_b-hrktx = <fs_out>-hrktx.
+        ls_data_b-ztype = 'B'.
+        APPEND ls_data_b TO lt_data.
+      ENDIF.
+***计算产销率
+      ls_data_c-hrkft = <fs_out>-hrkft.
+      ls_data_c-hrktx = <fs_out>-hrktx.
+      ls_data_c-ztype = 'C'.
+      IF ls_data_a-zsntq NE 0.
+        ls_data_c-zsntq = ls_data_b-zsntq / ls_data_a-zsntq * 100.
+      ENDIF.
+      IF ls_data_a-zbntq NE 0.
+        ls_data_c-zbntq = ls_data_b-zbntq / ls_data_a-zbntq * 100.
+      ENDIF.
+      IF ls_data_c-zbntq NE 0.
+        ls_data_c-zzj = ( ls_data_c-zbntq - ls_data_c-zsntq ) / ls_data_c-zbntq * 100.
+      ENDIF.
+      APPEND ls_data_c TO lt_data.
+    ENDAT.
+  ENDLOOP.
+
+  APPEND LINES OF lt_data TO gt_out.
+
+  LOOP AT gt_out ASSIGNING <fs_out>.
+    CASE <fs_out>-ztype.
+      WHEN 'A'.
+        <fs_out>-ztype_txt = '产量'.
+      WHEN 'B'.
+        <fs_out>-ztype_txt = '销量'.
+      WHEN 'C'.
+        <fs_out>-ztype_txt = '产销率%'.
+      WHEN OTHERS.
+    ENDCASE.
+  ENDLOOP.
+
+  SORT gt_out BY hrkft hrktx ztype.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_fieldcat .
+  mcr_build_fieldcat:'HRKFT'      '主要产品代码'      'HRKFT'      'MBEW'        ''       ''      'X',
+                     'HRKTX'      '主要产品描述'      'HRKTX'      'TKKH2'       ''       ''      '',
+                     'ZTYPE'      '项目'              ''           ''            'C'      '1'     'X',
+                     'ZTYPE_TXT'  '项目描述'          ''           ''            'C'      '10'    '',
+                     'ZSNTQ'      '上年同期'          ''           ''            'P'      '15'    '',
+                     'ZBNTQ'      '本期'              ''           ''            'P'      '15'    '',
+                     'ZZJ'        '增减'              ''           ''            'P'      '15'    ''.
+
+  gs_layout-cwidth_opt = 'X'.
+*  gs_layout-zebra = 'X'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_OUTPUT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_output_data .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+*     I_INTERFACE_CHECK  = ' '
+*     I_BYPASSING_BUFFER =
+*     I_BUFFER_ACTIVE    =
+      i_callback_program = sy-repid
+*     I_CALLBACK_PF_STATUS_SET          = ' '
+*     I_CALLBACK_USER_COMMAND           = ' '
+*     I_CALLBACK_TOP_OF_PAGE            = ' '
+*     I_CALLBACK_HTML_TOP_OF_PAGE       = ' '
+*     I_CALLBACK_HTML_END_OF_LIST       = ' '
+*     I_STRUCTURE_NAME   =
+*     I_BACKGROUND_ID    = ' '
+*     I_GRID_TITLE       =
+*     I_GRID_SETTINGS    =
+      is_layout_lvc      = gs_layout
+      it_fieldcat_lvc    = gt_fcat[]
+*     IT_EXCLUDING       =
+*     IT_SPECIAL_GROUPS_LVC             =
+      it_sort_lvc        = gt_sort[]
+*     IT_FILTER_LVC      =
+*     IT_HYPERLINK       =
+*     IS_SEL_HIDE        =
+      i_default          = 'X'
+      i_save             = 'A'
+*     IS_VARIANT         =
+*     IT_EVENTS          =
+*     IT_EVENT_EXIT      =
+*     IS_PRINT_LVC       =
+*     IS_REPREP_ID_LVC   =
+*     I_SCREEN_START_COLUMN             = 0
+*     I_SCREEN_START_LINE               = 0
+*     I_SCREEN_END_COLUMN               = 0
+*     I_SCREEN_END_LINE  = 0
+*     I_HTML_HEIGHT_TOP  =
+*     I_HTML_HEIGHT_END  =
+*     IT_ALV_GRAPHICS    =
+*     IT_EXCEPT_QINFO_LVC               =
+*     IR_SALV_FULLSCREEN_ADAPTER        =
+* IMPORTING
+*     E_EXIT_CAUSED_BY_CALLER           =
+*     ES_EXIT_CAUSED_BY_USER            =
+    TABLES
+      t_outtab           = gt_out[]
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_SORT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_sort .
+  REFRESH gt_sort.
+  gt_sort-fieldname = 'HRKFT'.
+  gt_sort-up = 'X'.
+  APPEND gt_sort.
+  CLEAR gt_sort.
+
+  gt_sort-fieldname = 'ZTYPE'.
+  gt_sort-up = 'X'.
+  APPEND gt_sort.
+  CLEAR gt_sort.
+
+  gt_sort-fieldname = 'HRKTX'.
+  gt_sort-up = 'X'.
+  APPEND gt_sort.
+  CLEAR gt_sort.
+
+  gt_sort-fieldname = 'ZTYPE_TXT'.
+  gt_sort-up = 'X'.
+  APPEND gt_sort.
+  CLEAR gt_sort.
+ENDFORM.

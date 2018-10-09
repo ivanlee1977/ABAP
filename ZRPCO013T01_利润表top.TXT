@@ -1,0 +1,17 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO013T01
+*&---------------------------------------------------------------------*
+TABLES:faglflext.
+
+TYPES:BEGIN OF tps_list,
+        zexno        TYPE i,
+        zamount_bq   TYPE tslvt12, "本期金额
+        zamount_bnlj TYPE tslvt12, "本年累计
+        zamount_sq   TYPE tslvt12, "上年同期金额
+        zamount_snlj TYPE tslvt12, "上年累计
+      END OF tps_list.
+TYPES: tpt_list TYPE TABLE OF tps_list.
+
+DATA gt_list TYPE tpt_list.
+
+CONSTANTS:gcst_excel_template TYPE w3objid VALUE 'ZCO013'.

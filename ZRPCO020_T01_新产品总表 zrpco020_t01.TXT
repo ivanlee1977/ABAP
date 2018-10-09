@@ -1,0 +1,79 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPMM023_TOP
+*&---------------------------------------------------------------------*
+TYPE-POOLS:slis,trff.
+
+TABLES:ce11000 .
+
+
+DATA:BEGIN OF gt_co  OCCURS 0,"展示内表
+
+       ww006   LIKE ce11000-ww006,
+       ww012   LIKE ce11000-ww012,
+       ww013   LIKE ce11000-ww013,
+       ww004   LIKE ce11000-ww004,
+       vkorg   LIKE ce11000-vkorg,
+       vv002   LIKE ce11000-vv002,
+       vv001   LIKE ce11000-vv002,
+       zvv   LIKE ce11000-vv001,
+       budat   LIKE ce11000-budat,
+       zd012   TYPE dats,
+       zd013   TYPE dats,
+       zmonths TYPE char1,
+     END OF gt_co.
+
+DATA:BEGIN OF gt_co1  OCCURS 0,"展示内表
+       zmonths TYPE int4,
+       ww006   LIKE ce11000-ww006,
+       zd012   TYPE date,
+       zd013   TYPE date,
+       ww004   LIKE ce11000-ww004,
+       vv002   LIKE ce11000-vv002,
+       vv001   LIKE ce11000-vv002,
+       zvv     LIKE ce11000-vv001,
+       vv01    LIKE ce11000-vv002,
+       vv02    LIKE ce11000-vv002,
+       zvv00   LIKE ce11000-vv001,
+       vv11    LIKE ce11000-vv002,
+       vv12    LIKE ce11000-vv002,
+       zvv01   LIKE ce11000-vv001,
+       vv21    LIKE ce11000-vv002,
+       vv22    LIKE ce11000-vv002,
+       zvv02   LIKE ce11000-vv001,
+       vv31    LIKE ce11000-vv002,
+       vv32    LIKE ce11000-vv002,
+       zvv03   LIKE ce11000-vv001,
+       vv41    LIKE ce11000-vv002,
+       vv42    LIKE ce11000-vv002,
+       zvv04   LIKE ce11000-vv001,
+       vv51    LIKE ce11000-vv002,
+       vv52    LIKE ce11000-vv002,
+       zvv05   LIKE ce11000-vv001,
+       vv61    LIKE ce11000-vv002,
+       vv62    LIKE ce11000-vv002,
+       zvv06   LIKE ce11000-vv001,
+       vv71    LIKE ce11000-vv002,
+       vv72    LIKE ce11000-vv002,
+       zvv07   LIKE ce11000-vv001,
+       vv81    LIKE ce11000-vv002,
+       vv82    LIKE ce11000-vv002,
+       zvv08   LIKE ce11000-vv001,
+       vv91    LIKE ce11000-vv002,
+       vv92    LIKE ce11000-vv002,
+       zvv09   LIKE ce11000-vv001,
+     END OF gt_co1.
+
+DATA gt_co2 LIKE TABLE OF gt_co1 WITH HEADER LINE.
+DATA: gt_fcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      gs_layout TYPE slis_layout_alv.
+
+DATA gv_time TYPE int2 VALUE 0.
+DEFINE g_fieldfcat .
+  gt_fcat-fieldname = &1.
+  gt_fcat-seltext_s = &2.
+  gt_fcat-ddictxt = 'S'.
+  gt_fcat-ref_fieldname = &3.
+  gt_fcat-ref_tabname = &4.
+  APPEND gt_fcat.
+  CLEAR gt_fcat.
+END-OF-DEFINITION.

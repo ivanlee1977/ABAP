@@ -1,0 +1,39 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPCO003S01
+*&---------------------------------------------------------------------*
+
+***selecion screen define
+SELECTION-SCREEN BEGIN OF BLOCK blc WITH FRAME TITLE TEXT-001.
+PARAMETERS:p_werks LIKE t001w-werks OBLIGATORY DEFAULT '1000',
+           p_gjahr LIKE bkpf-gjahr OBLIGATORY DEFAULT sy-datum(4),
+           p_monat LIKE bkpf-monat OBLIGATORY DEFAULT sy-datum+4(2).
+SELECT-OPTIONS:s_aufnr FOR bseg-aufnr MATCHCODE OBJECT co_sh_prodord_all,
+               s_matnr FOR bseg-matnr.
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN:COMMENT 1(20) TEXT-sys FOR FIELD p_syst1 MODIF ID fnr.
+SELECTION-SCREEN POSITION 33.
+PARAMETERS:p_syst1 LIKE tj02t-txt04 MODIF ID fnr,
+           p_sysh1 LIKE jest-stat NO-DISPLAY.
+SELECTION-SCREEN POSITION 39.
+PARAMETERS:p_kz_e1 LIKE rcosa-excl1  MODIF ID fnr.
+SELECTION-SCREEN:COMMENT 42(5) TEXT-exc FOR FIELD p_kz_e1 MODIF ID fnr,
+                 COMMENT 52(3) TEXT-and FOR FIELD p_syst2 MODIF ID fnr.
+SELECTION-SCREEN POSITION 58.
+PARAMETERS:p_syst2 LIKE tj02t-txt04 MODIF ID fnr,
+           p_sysh2 LIKE jest-stat NO-DISPLAY.
+SELECTION-SCREEN POSITION 64.
+PARAMETERS:p_kz_e2   LIKE rcosa-excl1 MODIF ID fnr.
+SELECTION-SCREEN:COMMENT 67(5) TEXT-exc FOR FIELD p_kz_e2 MODIF ID fnr.
+SELECTION-SCREEN END   OF LINE.
+SELECTION-SCREEN END OF BLOCK blc.
+
+SELECTION-SCREEN BEGIN OF BLOCK blc1 WITH FRAME TITLE TEXT-002.
+PARAMETERS:r1 RADIOBUTTON GROUP ra DEFAULT 'X',
+           r2 RADIOBUTTON GROUP ra.
+SELECTION-SCREEN END OF BLOCK blc1.
+
+AT SELECTION-SCREEN ON p_syst1.
+  PERFORM frm_system_state_check USING yx CHANGING p_syst1 p_sysh1.
+
+AT SELECTION-SCREEN ON p_syst2.
+  PERFORM frm_system_state_check USING yx CHANGING p_syst2 p_sysh2.

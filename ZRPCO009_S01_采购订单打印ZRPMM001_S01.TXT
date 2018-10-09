@@ -1,0 +1,16 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPMM004_S01
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+    PARAMETERS p_bwkey TYPE mbew-bwkey OBLIGATORY.
+
+    SELECT-OPTIONS:s_mtart  FOR mara-mtart OBLIGATORY.
+
+    PARAMETERS: p_lfgja TYPE  mbew-lfgja OBLIGATORY,
+                p_lfmon TYPE  mbew-lfmon OBLIGATORY.
+
+    SELECT-OPTIONS: s_matkl FOR mara-matkl,
+                    s_bklas	FOR	mbew-bklas,
+                    s_matnr	FOR	macku-matnr.
+SELECTION-SCREEN END OF BLOCK b1.

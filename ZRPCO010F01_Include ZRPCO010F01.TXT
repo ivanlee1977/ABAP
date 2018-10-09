@@ -1,0 +1,245 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO010F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+  DATA: lv_gjahr_low  LIKE faglflext-ryear, "查询起始年度
+        lv_gjahr_high LIKE faglflext-ryear. "查询截止年度
+  REFRESH: gt_faglflext,gt_alv,gt_skat.
+  CLEAR: lv_gjahr_low,lv_gjahr_high.
+*  根据选择屏幕从表FALFLEXT中取出科目RACCT为6602开头的数据
+  lv_gjahr_low = s_datum-low+0(4).
+  lv_gjahr_high = s_datum-high+0(4).
+
+  SELECT * INTO TABLE gt_faglflext
+    FROM faglflext
+    WHERE ryear BETWEEN lv_gjahr_low AND lv_gjahr_high
+      AND rbukrs = p_bukrs
+      AND rfarea = p_rfarea
+      AND racct LIKE '6602%'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_fieldcat .
+  DATA: lv_datum     LIKE sy-datum.
+  DATA: lt_num          TYPE i,
+        lv_colname(20),
+        lv_colname1(20),
+        lv_index(2).
+  REFRESH:g_it_fieldcat1.
+  PERFORM sub_set_fieldcat1 USING 'X' 'ZDX'    '大项'   ''  '' ''  ''  ''  ''  '' '' '' .
+  PERFORM sub_set_fieldcat1 USING 'X' 'ZFYXM'  '费用项目'   ''  '' ''  ''  ''  ''  '' '' '' .
+
+  CONCATENATE s_datum-low '01' INTO lv_datum.
+  DO 12 TIMES." 根据条件动态生成列
+    lv_index = lv_index + 1.
+*    RP_CALC_DATE_IN_INTERVAL
+    CONCATENATE 'COL' lv_index INTO lv_colname.
+    CONCATENATE lv_datum+0(4) '年' lv_datum+4(2) '月' INTO lv_colname1.
+    PERFORM sub_set_fieldcat1 USING '' lv_colname  lv_colname1   'X'  '' ''  ''  ''  ''  '' '' '' .
+    CALL FUNCTION 'RP_CALC_DATE_IN_INTERVAL'
+      EXPORTING
+        date      = lv_datum
+        days      = '00'
+        months    = '01'
+        signum    = '+'
+        years     = '00'
+      IMPORTING
+        calc_date = lv_datum.
+  ENDDO.
+
+  PERFORM sub_set_fieldcat1 USING '' 'ZCOLL'  '合计'   'X'  '' ''  ''  ''  ''  '' '' '' .
+
+*内表创建
+
+  CALL METHOD cl_alv_table_create=>create_dynamic_table
+    EXPORTING
+      it_fieldcatalog = g_it_fieldcat1
+    IMPORTING
+      ep_table        = d_ref.
+
+  CALL METHOD cl_alv_table_create=>create_dynamic_table
+    EXPORTING
+      it_fieldcatalog = lt_alv_cat
+    IMPORTING
+      ep_table        = d_ref1.
+
+
+*指定生成的内表到字段符号
+
+  ASSIGN d_ref->* TO <dyn_table>.
+  ASSIGN d_ref1->* TO <dyn_table1>.
+
+
+*创建动态工作区结构
+
+  CREATE DATA dyn_wa LIKE LINE OF <dyn_table>.
+  CREATE DATA dyn_wa1 LIKE LINE OF <dyn_table1>.
+
+
+*创建动态工作区
+
+  ASSIGN dyn_wa->* TO <dyn_wa>.
+  ASSIGN dyn_wa1->* TO <dyn_wa1>.
+
+
+*  给动态内表赋值
+
+  SORT gt_out BY kunnr ASCENDING gjahr DESCENDING monat DESCENDING.
+  LOOP AT gt_out .
+    CLEAR:lt_num,index.
+    ASSIGN COMPONENT 'KUNNR' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-kunnr.
+    ASSIGN COMPONENT 'NAME1' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-name1.
+    ASSIGN COMPONENT 'ZTERM' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-zterm.
+    ASSIGN COMPONENT 'TEXT1' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-text1.
+    ASSIGN COMPONENT 'WAERS' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-waers.
+    ASSIGN COMPONENT 'BYDQHK' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-bydqhk.
+    lt_num = gt_out-monat.
+    index = lt_num.
+    IF gt_out-gjahr = p_gjahr.
+      PERFORM read_col USING index CHANGING gt_out.
+    ELSE.
+      ASSIGN COMPONENT 'BEFOR' OF STRUCTURE <dyn_wa> TO <fs_str>.
+      <fs_str> = gt_out-wrbtr.
+    ENDIF.
+    ASSIGN COMPONENT 'ZSUM' OF STRUCTURE <dyn_wa> TO <fs_str>.
+    <fs_str> = gt_out-wrbtr.
+    COLLECT <dyn_wa> INTO <dyn_table>.
+    CLEAR:<dyn_wa>.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  READ_COL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_INDEX  text
+*      <--P_GT_OUT  text
+*----------------------------------------------------------------------*
+FORM read_col USING p_monat
+CHANGING p_gt_out.
+  DATA: l_text TYPE c LENGTH 10.
+  CONCATENATE 'COL' p_monat INTO l_text.
+  CONDENSE l_text.
+  ASSIGN COMPONENT l_text OF STRUCTURE <dyn_wa> TO <fs_str>.
+  <fs_str> = gt_out-wrbtr.
+ENDFORM. " READ_COL
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_EVENTS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_events .
+  REFRESH g_it_events.
+  g_it_events-name = 'TOP_OF_PAGE'.
+  g_it_events-form = 'FRM_TOP_OF_PAGE'.
+  APPEND g_it_events.
+  CLEAR g_it_events.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_top_of_page .
+  DATA:lt_list TYPE slis_t_listheader WITH HEADER LINE.
+  DATA: p_butxt LIKE t001-butxt.
+  DEFINE mcr_no_zero.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+    EXPORTING
+      input         = &1
+    IMPORTING
+      output        = &2.
+  END-OF-DEFINITION.
+  lt_list-typ = 'S'.
+  lt_list-key = '报表名称：'.
+  lt_list-info = '应收帐款超期汇总表'.
+  APPEND lt_list.
+  CLEAR lt_list.
+
+  lt_list-typ = 'S'.
+  lt_list-key = '公司代码：'.
+  SELECT SINGLE butxt INTO p_butxt FROM t001 WHERE bukrs = p_bukrs.
+  CONDENSE p_butxt.
+  lt_list-info = p_butxt.
+  APPEND lt_list.
+  CLEAR lt_list.
+
+  CLEAR: p_butxt.
+  lt_list-typ = 'S'.
+  lt_list-key = '查询期间:'.
+  CONCATENATE p_gjahr '年' p_monat '月' INTO p_butxt.
+  CONDENSE p_butxt.
+  lt_list-info = p_butxt.
+  APPEND lt_list.
+  CLEAR lt_list.
+
+  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+    EXPORTING
+      it_list_commentary = lt_list[].
+ENDFORM. " FRM_TOP_OF_PAGE
+*&---------------------------------------------------------------------*
+*&      Form  SUB_DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_<DYN_TABLE>  text
+*      -->P_0298   text
+*      -->P_0299   text
+*----------------------------------------------------------------------*
+FORM frm_output_data TABLES p_tab.
+  i_layout_lvc-zebra       = 'X' ." 使ALV界面呈现颜色交替
+  i_layout_lvc-sel_mode      = 'A' ." 选择模式，“A”在最左端有选择按钮
+  i_layout_lvc-cwidth_opt       = 'X' ." 自动优化列宽
+  i_layout_lvc-detailinit      = 'X' ." 是否出现细节屏幕
+  i_layout_lvc-detailtitl      = '详细内容'."    细节屏幕标题
+
+
+*显示内表中的数据
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program      = sy-repid          " 当前程序
+      i_callback_user_command = 'ALV_USER_COMMAND'
+      is_layout_lvc           = i_layout_lvc      " 属性内表
+      it_fieldcat_lvc         = lt_alv_cat  " 列明内表
+      i_save                  = 'X'               " 是否保存布局
+      it_events               = gt_events[]
+    TABLES
+      t_outtab                = p_tab             " 数据内表
+    EXCEPTIONS
+      program_error           = 1
+      OTHERS                  = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+    WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM. " FRM_OUTPUT_DATA

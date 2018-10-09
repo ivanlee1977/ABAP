@@ -1,0 +1,46 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPMM001_TOP
+*&---------------------------------------------------------------------*
+TYPE-POOLS:slis.
+
+TABLES:ce11000 .
+
+
+DATA:BEGIN OF gt_co  OCCURS 0,"展示内表
+       artnr LIKE ce11000-artnr,
+       maktx LIKE makt-maktx,
+       ww001 LIKE ce11000-ww001,
+       bezek LIKE t25a0-bezek,
+       spart LIKE ce11000-spart,
+       vtext LIKE tspat-vtext,
+       matkl LIKE ce11000-matkl,
+       wgbez LIKE t023t-wgbez,
+       ww005 LIKE ce11000-ww005,
+       ww006 LIKE ce11000-ww006,
+       ww003 LIKE ce11000-ww003,
+       ww007 LIKE ce11000-ww007,
+       ww008 LIKE ce11000-ww008,
+       ww009 LIKE ce11000-ww009,
+       ww004 LIKE ce11000-ww004,
+       absmg LIKE ce11000-absmg,
+       vv002 LIKE ce11000-vv002,
+       vv001 LIKE ce11000-vv001,
+       zvv00 LIKE ce11000-vv001,
+     END OF gt_co.
+
+DATA gt_co1 like TABLE OF gt_co WITH HEADER LINE.
+
+
+DATA: gt_fcat   TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      gs_layout TYPE slis_layout_alv.
+
+
+DEFINE g_fieldfcat .
+  gt_fcat-fieldname = &1.
+  gt_fcat-seltext_s = &2.
+  gt_fcat-ddictxt = 'S'.
+  gt_fcat-ref_fieldname = &3.
+  gt_fcat-ref_tabname = &4.
+  APPEND gt_fcat.
+  CLEAR gt_fcat.
+END-OF-DEFINITION.

@@ -1,0 +1,13 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZFIR_0010_EVENT
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZFIR_0010_EVENT
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+  PERFORM frm_check.
+  PERFORM frm_getdata.
+  PERFORM frm_process.
+  PERFORM sub_build_fieldcat.
+  PERFORM sub_build_layout.
+  PERFORM sub_display_alv TABLES gt_alv USING 'ALV_USER_COMMAND' ''.

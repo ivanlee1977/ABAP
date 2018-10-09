@@ -1,0 +1,438 @@
+*&---------------------------------------------------------------------*
+*& Report ZRPCO018
+*& 创建者(公司)/日期： PFT/20171012
+*& 程序描述:新产品明细表
+*&---------------------------------------------------------------------*
+*& 版本     修改者(公司)     日期         修改描述
+*& 1.0.0    PFT           20171012     创建程序
+*& 1.1.0    LEIMT           20180131     修改程序
+*&---------------------------------------------------------------------*
+REPORT zrpco018.
+
+INCLUDE zalv.
+
+TABLES: ce11000.
+
+DATA: BEGIN OF gt_alv OCCURS 0,
+        box(1).
+    INCLUDE STRUCTURE ce11000.
+DATA:name1(70), "客户名称
+     vtext_ktgrd  LIKE tvktt-vtext, "客户帐户组名称
+     bztxt_bzirk  LIKE t171t-bztxt, "销售大区名称
+     bezei_vkbur  LIKE tvkbt-bezei, "销售行办名称
+     bezei_vkgrp  LIKE tvkbt-bezei, "销售组名称
+     vtext_vkorg  LIKE tvkot-vtext, "销售组织描述
+     vtext_vtweg  LIKE tvtwt-vtext, "分销渠道描述
+     bezei_kvgr1  LIKE tvv1t-bezei, "销售工程师描述
+     bezei_kvgr2  LIKE tvv2t-bezei, "商务描述
+     ktext_kdgrp  LIKE t151t-ktext, "行业
+     maktx        LIKE makt-maktx, "物料描述
+     bezek_ww001  LIKE t25a0-bezek, "产品分类描述
+     vtext_spart  LIKE tspat-vtext, "产品组描述
+     wgbez        LIKE t023t-wgbez, "物料组描述
+     atage        TYPE vtbbewe-atage, "新产品年数
+     zcpns        TYPE c LENGTH 15, "新产品年数
+*  ADD BY PFT 20180123
+     vgbel        LIKE vbrp-vgbel, "交货单号
+     vgpos        LIKE vbrp-vgpos, "交货单行项目号
+*  END BY PFT 20180123
+     bztxt_bzirk1 LIKE t171t-bztxt,
+     bezei_vkbur1 LIKE tvkbt-bezei,
+     bezei_kvgr21 LIKE tvv2t-bezei,
+     bezei_kvgr11 LIKE tvv1t-bezei,
+     END OF gt_alv.
+
+*  ADD BY PFT 20180123
+DATA: BEGIN OF gt_vbrp OCCURS 0,
+        vbeln LIKE vbrp-vbeln,
+        posnr LIKE vbrp-posnr,
+        vgbel LIKE vbrp-vgbel,
+        vgpos LIKE vbrp-vgpos,
+      END OF gt_vbrp.
+DATA: BEGIN OF gt_lips OCCURS 0,
+        vbeln LIKE lips-vbeln,
+        posnr LIKE lips-posnr,
+        uecha LIKE lips-uecha,
+      END OF gt_lips.
+*  END BY PFT 20180123
+************************************************************************
+*选择屏幕
+************************************************************************
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS:p_bukrs LIKE ce11000-bukrs OBLIGATORY DEFAULT '1000' MODIF ID buk, "公司代码
+           p_gjahr LIKE ce11000-gjahr OBLIGATORY DEFAULT sy-datum(4).
+SELECT-OPTIONS:s_perde FOR ce11000-perde OBLIGATORY DEFAULT sy-datum+4(2).
+SELECTION-SCREEN END OF BLOCK b1.
+
+************************************************************************
+*INITIALIZATION.
+************************************************************************
+INITIALIZATION.
+************************************************************************
+* AT SELECTION-SCREEN OUTPUT
+************************************************************************
+AT SELECTION-SCREEN OUTPUT.
+************************************************************************
+* AT SELECTION-SCREEN
+************************************************************************
+AT SELECTION-SCREEN.
+************************************************************************
+* START-OF-SELECTION
+************************************************************************
+START-OF-SELECTION.
+
+  PERFORM frm_get_data."取数
+  PERFORM sub_build_fieldcat.
+  PERFORM sub_build_layout.
+  PERFORM sub_display_alv TABLES gt_alv USING '' ''.
+
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_get_data .
+*  期间
+  DATA: lv_perio_low  LIKE ce11000-perio,
+        lv_perio_high LIKE ce11000-perio.
+  RANGES:r_perio FOR ce11000-perio.
+  DEFINE mcr_perio.
+    CLEAR:r_perio.
+     r_perio-sign = 'I'.
+     r_perio-option = 'BT'.
+     r_perio-low = &1.
+     r_perio-high = &2.
+    APPEND r_perio.
+  END-OF-DEFINITION.
+*  取描述相关表
+  DATA: lt_kna1  LIKE kna1 OCCURS 0 WITH HEADER LINE, "客户名称
+        lt_makt  LIKE makt OCCURS 0 WITH HEADER LINE, "物料描述
+        lt_tvktt LIKE tvktt OCCURS 0 WITH HEADER LINE, "客户帐户组名称
+        lt_t171t LIKE t171t OCCURS 0 WITH HEADER LINE, "销售大区名称
+        lt_tvkbt LIKE tvkbt OCCURS 0 WITH HEADER LINE, "销售行办名称
+        lt_tvgrt LIKE tvgrt OCCURS 0 WITH HEADER LINE, "销售组名称
+        lt_tvkot LIKE tvkot OCCURS 0 WITH HEADER LINE, "销售组织描述
+        lt_tvtwt LIKE tvtwt OCCURS 0 WITH HEADER LINE, "分销渠道描述
+        lt_tvv1t LIKE tvv1t OCCURS 0 WITH HEADER LINE, "销售工程师描述
+        lt_tvv2t LIKE tvv2t OCCURS 0 WITH HEADER LINE, "商务描述
+        lt_t151t LIKE t151t OCCURS 0 WITH HEADER LINE, "行业
+        lt_t25a0 LIKE t25a0 OCCURS 0 WITH HEADER LINE, "产品分类描述
+        lt_tspat LIKE tspat OCCURS 0 WITH HEADER LINE, "产品组描述
+        lt_t023t LIKE t023t OCCURS 0 WITH HEADER LINE. "物料组描述
+
+* 计算新产品年数
+  DATA i_date_from    TYPE vtbbewe-dbervon.
+
+  FIELD-SYMBOLS:<fs_alv> LIKE gt_alv.
+  REFRESH:gt_alv,r_perio.
+  CLEAR:lv_perio_low,lv_perio_high.
+
+  IF s_perde-high IS INITIAL.
+    CONCATENATE p_gjahr s_perde-low INTO lv_perio_high.
+    CONDENSE lv_perio_high.
+  ELSE.
+    CONCATENATE p_gjahr s_perde-high INTO lv_perio_high.
+    CONDENSE lv_perio_high.
+  ENDIF.
+
+* 根据选择屏幕输入的年度和期间处理查询期间
+  IF s_perde-low IS NOT INITIAL.
+    CONCATENATE p_gjahr s_perde-low INTO lv_perio_low.
+    CONDENSE lv_perio_low.
+  ENDIF.
+  mcr_perio: lv_perio_low lv_perio_high.
+
+*  根据经营范围的货币类型（10-02）、期间、公司代码取出ABSMG VV001不等于0的记录
+  SELECT * INTO CORRESPONDING FIELDS OF TABLE gt_alv
+    FROM ce11000
+    WHERE paledger = '02'
+      AND perio IN r_perio
+      AND bukrs = p_bukrs
+      AND absmg NE 0
+      AND vv001 NE 0.
+
+  CHECK gt_alv[] IS NOT INITIAL.
+
+*  ADD BY PFT 20180123
+* 根据发票号从表vbrp中取出交货单号
+  SELECT vbeln posnr vgbel vgpos
+    INTO CORRESPONDING FIELDS OF TABLE gt_vbrp
+    FROM vbrp
+    FOR ALL ENTRIES IN gt_alv
+    WHERE vbeln = gt_alv-rbeln.
+  SORT gt_vbrp BY vbeln posnr.
+
+  IF gt_vbrp[] IS NOT INITIAL.
+    SELECT vbeln posnr uecha
+      INTO CORRESPONDING FIELDS OF TABLE gt_lips
+      FROM lips
+      FOR ALL ENTRIES IN gt_vbrp
+      WHERE vbeln = gt_vbrp-vgbel
+        AND posnr = gt_vbrp-vgpos.
+    SORT gt_lips BY vbeln posnr.
+  ENDIF.
+*  END BY PFT 20180123
+
+  SELECT * INTO TABLE lt_kna1 FROM kna1 FOR ALL ENTRIES IN gt_alv WHERE kunnr = gt_alv-kndnr.
+  SORT lt_kna1 BY kunnr.
+  SELECT * INTO TABLE lt_makt FROM makt FOR ALL ENTRIES IN gt_alv WHERE matnr = gt_alv-artnr and spras = 1.
+  SORT lt_makt BY matnr.
+  SELECT * INTO TABLE lt_tvktt FROM tvktt WHERE spras = 1.
+  SORT lt_tvktt BY ktgrd.
+  SELECT * INTO TABLE lt_t171t FROM t171t WHERE spras = sy-langu.
+  SORT lt_t171t BY bzirk.
+  SELECT * INTO TABLE lt_tvkbt FROM tvkbt WHERE spras = sy-langu.
+  SORT lt_tvkbt BY vkbur.
+  SELECT * INTO TABLE lt_tvgrt FROM tvgrt WHERE spras = sy-langu.
+  SORT lt_tvgrt BY vkgrp.
+  SELECT * INTO TABLE lt_tvkot FROM tvkot WHERE spras = sy-langu.
+  SORT lt_tvkot BY vkorg.
+  SELECT * INTO TABLE lt_tvtwt FROM tvtwt WHERE spras = sy-langu.
+  SORT lt_tvtwt BY vtweg.
+  SELECT * INTO TABLE lt_tvv1t FROM tvv1t WHERE spras = sy-langu.
+  SORT lt_tvv1t BY kvgr1.
+  SELECT * INTO TABLE lt_tvv2t FROM tvv2t WHERE spras = sy-langu.
+  SORT lt_tvv2t BY kvgr2.
+  SELECT * INTO TABLE lt_t151t FROM t151t WHERE spras = sy-langu.
+  SORT lt_t151t BY kdgrp.
+  SELECT * INTO TABLE lt_t25a0 FROM t25a0 WHERE spras = sy-langu.
+  SORT lt_t25a0 BY ww001.
+  SELECT * INTO TABLE lt_tspat FROM tspat WHERE spras = sy-langu.
+  SORT lt_tspat BY spart.
+  SELECT * INTO TABLE lt_t023t FROM t023t WHERE spras = sy-langu.
+  SORT lt_t023t BY matkl.
+
+  LOOP AT gt_alv ASSIGNING <fs_alv>.
+*  根据发票号取出交货单信息
+    READ TABLE gt_vbrp WITH KEY vbeln = <fs_alv>-rbeln posnr = <fs_alv>-rposn BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-vgbel = gt_vbrp-vgbel.
+      READ TABLE gt_lips WITH KEY vbeln = gt_vbrp-vgbel posnr = gt_vbrp-vgpos BINARY SEARCH.
+      IF sy-subrc = 0.
+        IF gt_lips-posnr(1) = '9'.
+          <fs_alv>-vgpos = gt_lips-uecha.
+        ELSE.
+          <fs_alv>-vgpos = gt_lips-posnr.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+*  取出客户名称
+    READ TABLE lt_kna1 WITH KEY kunnr = <fs_alv>-kndnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      CONCATENATE lt_kna1-name1 lt_kna1-name2 INTO <fs_alv>-name1.
+    ENDIF.
+*  取出客户帐户组名称
+    READ TABLE lt_tvktt WITH KEY ktgrd = <fs_alv>-ktgrd BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-vtext_ktgrd = lt_tvktt-vtext.
+    ENDIF.
+*  取出销售大区描述
+    READ TABLE lt_t171t WITH KEY bzirk = <fs_alv>-bzirk BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bztxt_bzirk = lt_t171t-bztxt.
+    ENDIF.
+    READ TABLE lt_t171t WITH KEY bzirk = <fs_alv>-ww016 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bztxt_bzirk1 = lt_t171t-bztxt.
+    ENDIF.
+*  取出销售行办描述
+    READ TABLE lt_tvkbt WITH KEY vkbur = <fs_alv>-vkbur BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_vkbur = lt_tvkbt-bezei.
+    ENDIF.
+    READ TABLE lt_tvkbt WITH KEY vkbur = <fs_alv>-ww015 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_vkbur1 = lt_tvkbt-bezei.
+    ENDIF.
+*  取出销售组描述
+    READ TABLE lt_tvgrt WITH KEY vkgrp = <fs_alv>-vkgrp BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_vkgrp = lt_tvgrt-bezei.
+    ENDIF.
+*  取出销售组织描述
+    READ TABLE lt_tvkot WITH KEY vkorg = <fs_alv>-vkorg BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-vtext_vkorg = lt_tvkot-vtext.
+    ENDIF.
+*  取出分销渠道描述
+    READ TABLE lt_tvtwt WITH KEY vtweg = <fs_alv>-vtweg BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-vtext_vtweg = lt_tvtwt-vtext.
+    ENDIF.
+*  取出销售工程师描述
+    READ TABLE lt_tvv1t WITH KEY kvgr1 = <fs_alv>-kvgr1 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_kvgr1 = lt_tvv1t-bezei.
+    ENDIF.
+    READ TABLE lt_tvv1t WITH KEY kvgr1 = <fs_alv>-ww018 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_kvgr11 = lt_tvv1t-bezei.
+    ENDIF.
+*  取出商务描述
+    READ TABLE lt_tvv2t WITH KEY kvgr2 = <fs_alv>-kvgr2 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_kvgr2 = lt_tvv2t-bezei.
+    ENDIF.
+    READ TABLE lt_tvv2t WITH KEY kvgr2 = <fs_alv>-ww017 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezei_kvgr21 = lt_tvv2t-bezei.
+    ENDIF.
+*  取出行业描述
+    READ TABLE lt_t151t WITH KEY kdgrp = <fs_alv>-kmkdgr BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-ktext_kdgrp = lt_t151t-ktext.
+    ENDIF.
+*  取出物料描述
+    READ TABLE lt_makt WITH KEY matnr = <fs_alv>-artnr BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-maktx = lt_makt-maktx.
+    ENDIF.
+*  取产品分类描述
+    READ TABLE lt_t25a0 WITH KEY ww001 = <fs_alv>-ww001 BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-bezek_ww001 = lt_t25a0-bezek.
+    ENDIF.
+*  取产品组描述
+    READ TABLE lt_tspat WITH KEY spart = <fs_alv>-spart BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-vtext_spart = lt_tspat-vtext.
+    ENDIF.
+*  取物料组描述
+    READ TABLE lt_t023t WITH KEY matkl = <fs_alv>-matkl BINARY SEARCH.
+    IF sy-subrc = 0.
+      <fs_alv>-wgbez = lt_t023t-wgbez.
+    ENDIF.
+*  日期转换
+    IF <fs_alv>-ww012 IS NOT INITIAL.
+      PERFORM frm_fltp_to_char CHANGING <fs_alv>-ww012.
+      CONDENSE <fs_alv>-ww012.
+    ENDIF.
+    IF <fs_alv>-ww013 IS NOT INITIAL.
+      PERFORM frm_fltp_to_char CHANGING <fs_alv>-ww013.
+      CONDENSE <fs_alv>-ww013.
+    ENDIF.
+*  新产品年数：开始日期-过帐日期
+    IF <fs_alv>-ww012 IS NOT INITIAL.
+      i_date_from = <fs_alv>-ww012.
+      IF i_date_from < <fs_alv>-budat.
+        CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+          EXPORTING
+            i_date_from    = i_date_from
+            i_key_day_from = '00'
+            i_date_to      = <fs_alv>-budat
+            i_key_day_to   = '00'
+          IMPORTING
+            e_years        = <fs_alv>-atage.
+      ELSE.
+        CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+          EXPORTING
+            i_date_from    = <fs_alv>-budat
+            i_key_day_from = '00'
+            i_date_to      = i_date_from
+            i_key_day_to   = '00'
+          IMPORTING
+            e_years        = <fs_alv>-atage.
+      ENDIF.
+      <fs_alv>-zcpns = <fs_alv>-atage.
+      CONCATENATE <fs_alv>-ww004 <fs_alv>-zcpns INTO <fs_alv>-zcpns .
+      CONDENSE <fs_alv>-zcpns.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_fieldcat .
+  REFRESH:g_it_fieldcat.
+  PERFORM sub_set_fieldcat USING 'X' 'RBELN'       '系统发票号'              'X'  '' ''  ''  ''  'RBELN'  'CE11000' ''  .
+  PERFORM sub_set_fieldcat USING 'X' 'RPOSN'       '发票行项目'              'X'  '' ''  ''  ''  'RPOSN'  'CE11000' ''  .
+  PERFORM sub_set_fieldcat USING 'X' 'VGBEL'       '交货单号'                'X'  '' ''  ''  ''  'VBELN'  'LIPS' ''  .
+  PERFORM sub_set_fieldcat USING 'X' 'VGPOS'       '交货单行项目'            'X'  '' ''  ''  ''  'POSNR'  'LIPS' ''  .
+  PERFORM sub_set_fieldcat USING 'X' 'BUDAT'       '过账日期'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING 'X' 'KNDNR'       '客户代码'                'X'  '' ''  ''  ''  'KNDNR'  'CE11000' ''  .
+  PERFORM sub_set_fieldcat USING 'X' 'NAME1'       '客户名称'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'LAND1'       '国家/地区'               ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'KTGRD'       '帐户组'                  ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VTEXT_KTGRD' '帐户组名称'              ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW002'       '新客户开始计算日期'      ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BZIRK'       '销售大区'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BZTXT_BZIRK' '销售大区名称'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VKBUR'       '销售行办'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_VKBUR' '销售行办名称'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VKGRP'       '销售组'                  ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_VKGRP' '销售组名称'              ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VKORG'       '销售组织'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VTEXT_VKORG' '销售组织描述'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VTWEG'       '分销渠道'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VTEXT_VTWEG' '分销渠道描述'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'KVGR1'       '销售工程师/销售代表'     ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_KVGR1' '销售工程师/销售代表名称' ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'KVGR2'       '商务'                    ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_KVGR2' '商务名称'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'KMKDGR'      '行业'                    ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'KTEXT_KDGRP' '行业名称'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'FRWAE'       '货币'                    ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'ARTNR'       '物料代码'                'X'  '' ''  ''  ''  'ARTNR'  'CE11000' ''  .
+  PERFORM sub_set_fieldcat USING ''  'MAKTX'       '物料名称'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW001'       '产品分类'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEK_WW001' '产品分类描述'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'SPART'       '产品组'                  ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VTEXT_SPART' '产品组描述'              ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'MATKL'       '物料组'                  ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WGBEZ'       '物料组描述'              ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW005'       '产品型号'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW006'       '对应主型号'              ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW003'       '产品线'                  ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW012'       '新品开始时间'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW013'       '新品结束时间'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW007'       '系列'                    ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW008'       '子系列'                  ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW009'       '品牌/厂家'               ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW004'       '新产品类型'              ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'KAUFN'       '销售订单号'              'X'  '' ''  ''  ''  'KAUFN'  'CE11000' ''  .
+  PERFORM sub_set_fieldcat USING ''  'ABSMG'       '销售数量'                'X'  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VV002'       '销售收入(含税)'          'X'  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'VV001'       '销售收入(不含税)'        'X'  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'ZCPNS'       '新产品年数'              'X'  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW015'       '销售行办（销售订单）'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_VKBUR1' '销售行办名称（销售订单）'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW016'       '销售大区（销售订单）'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BZTXT_BZIRK1' '销售大区名称（销售订单）'            ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW017'       '商务（销售订单）'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_KVGR21' '商务名称（销售订单）'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'WW018'       '销售代表（销售订单）'                ''  '' ''  ''  ''  ''  '' ''  .
+  PERFORM sub_set_fieldcat USING ''  'BEZEI_KVGR11' '销售代表名称（销售订单）' ''  '' ''  ''  ''  ''  '' ''  .
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FLTP_TO_CHAR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_<FS_ALV>_WW012  text
+*----------------------------------------------------------------------*
+FORM frm_fltp_to_char  CHANGING pv_ww012.
+  DATA i_fltp_value             TYPE cha_class_data-sollwert.
+  DATA e_char_field             TYPE cha_class_view-sollwert.
+
+  i_fltp_value = pv_ww012.
+  CALL FUNCTION 'QSS0_FLTP_TO_CHAR_CONVERSION'
+    EXPORTING
+      i_number_of_digits       = '0'
+      i_fltp_value             = i_fltp_value
+      i_value_not_initial_flag = 'X'
+      i_screen_fieldlength     = 16
+    IMPORTING
+      e_char_field             = e_char_field.
+
+  pv_ww012 = e_char_field.
+
+ENDFORM.

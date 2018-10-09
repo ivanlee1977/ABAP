@@ -1,0 +1,10 @@
+*&---------------------------------------------------------------------*
+*&  °üº¬                ZRPMM023_S01
+*&---------------------------------------------------------------------*
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS: p_bukrs like  ce11000-bukrs OBLIGATORY DEFAULT 1000,
+            p_gjahr TYPE  ce11000-gjahr OBLIGATORY DEFAULT sy-datum+0(4).
+SELECT-OPTIONS:s_perde  FOR ce11000-perde OBLIGATORY.
+
+SELECTION-SCREEN END OF BLOCK b1.

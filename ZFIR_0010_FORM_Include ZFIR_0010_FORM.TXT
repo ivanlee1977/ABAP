@@ -1,0 +1,703 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZFIR_0010_FORM
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  包含                ZFIR_0010_FORM
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GETDATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_getdata .
+  REFRESH:gt_alv,gt_fagl,gt_skat.
+  SELECT * INTO CORRESPONDING FIELDS OF TABLE gt_fagl
+    FROM faglflext
+    WHERE rbukrs IN s_rbukrs
+      AND ryear EQ p_ryear
+      AND racct IN s_racct
+      and prctr in s_prctr.
+
+  SELECT * INTO TABLE gt_skat FROM skat WHERE spras = sy-langu AND ktopl = '1000'.
+  SELECT * INTO TABLE gt_tcurt FROM tcurt WHERE spras = sy-langu .
+  SELECT * INTO TABLE gt_kna1 FROM kna1 .
+  SELECT * INTO TABLE gt_lfa1 FROM lfa1.
+  SELECT * INTO TABLE gt_ztfi004 FROM ztfi004.
+
+  SORT gt_skat BY saknr.
+  SORT gt_tcurt BY waers.
+  SORT gt_kna1 BY kunnr.
+  SORT gt_lfa1 BY lifnr.
+  SORT gt_ztfi004 BY saknr.
+ENDFORM. " FRM_GETDATA
+*&---------------------------------------------------------------------*
+*&      Form  FRM_PROCESS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_process .
+  FIELD-SYMBOLS :<f>     LIKE faglflext-tsl01,
+                 <f2>    LIKE faglflext-hsl01,
+                 <f_alv> LIKE LINE OF gt_alv.
+  DATA: feld_name(13),
+        feld_name2(13),
+        lv_lfmon       TYPE faglflext-rpmax,
+        n_index(3)     TYPE n,
+        c_index(2)     TYPE c,
+        lv_high        TYPE faglflext-rpmax,
+        lv_xlh         TYPE n,
+        lv_flag        TYPE c.
+  DATA: lv_zkjqj     TYPE c LENGTH 30.
+  IF s_rpmax-high IS NOT INITIAL.
+    lv_lfmon = s_rpmax-high.
+    lv_high = s_rpmax-high.
+  ELSE.
+    lv_lfmon = s_rpmax-low.
+    lv_high = s_rpmax-low.
+  ENDIF.
+
+  lv_date_low = p_ryear && s_rpmax-low+1(2) && '01'.
+  lv_date_high = p_ryear && lv_high+1(2) && '01'.
+
+  CALL FUNCTION 'LAST_DAY_OF_MONTHS'
+    EXPORTING
+      day_in            = lv_date_high
+    IMPORTING
+      last_day_of_month = lv_date_high " 日期对应的最后一天
+    EXCEPTIONS
+      day_in_no_date    = 1
+      OTHERS            = 2.
+
+  lv_zkjqj = p_ryear && '.' && s_rpmax-low+1(2) && '.01-'
+             && p_ryear && '.' && lv_high+1(2) && '.' && lv_date_high+6(2).
+  CONDENSE lv_zkjqj.
+
+  LOOP AT gt_fagl.
+    CLEAR: gt_alv.
+    gt_alv-rbukrs = gt_fagl-rbukrs.
+    gt_alv-ryear = gt_fagl-ryear.
+    gt_alv-racct = gt_fagl-racct.
+    gt_alv-rtcur = gt_fagl-rtcur.
+*    期初
+    gt_alv-wrbtr_qc = gt_alv-wrbtr_qc + gt_fagl-tslvt.
+    gt_alv-dmbtr_qc = gt_alv-dmbtr_qc + gt_fagl-hslvt.
+    DO lv_lfmon TIMES.
+      n_index = sy-index. "循环，当前通过的编号
+      c_index = n_index+1(2).
+      CONCATENATE 'GT_FAGL-TSL' c_index INTO feld_name. ASSIGN (feld_name) TO <f>.
+      CONCATENATE 'GT_FAGL-HSL' c_index INTO feld_name2. ASSIGN (feld_name2) TO <f2>.
+      IF n_index  < s_rpmax-low.
+        ADD  <f>  TO  gt_alv-wrbtr_qc."期初外币
+        ADD  <f2>  TO  gt_alv-dmbtr_qc."期初外币
+      ELSEIF n_index >= s_rpmax-low AND sy-index <= lv_high.
+        PERFORM process_bq USING gt_fagl-drcrk <f> <f2> CHANGING gt_alv.
+      ENDIF.
+    ENDDO.
+    COLLECT gt_alv.
+    CLEAR: gt_alv,gt_fagl.
+  ENDLOOP.
+
+  LOOP AT gt_alv ASSIGNING <f_alv>.
+    <f_alv>-zkjqj = lv_zkjqj.
+*    期初方向
+    PERFORM frm_fx USING <f_alv>-dmbtr_qc CHANGING <f_alv>-fx_qc.
+*   计算期末
+    <f_alv>-wrbtr_qm = <f_alv>-wrbtr_qc + <f_alv>-wrbtr_bqs - <f_alv>-wrbtr_bqh.
+    <f_alv>-dmbtr_qm = <f_alv>-dmbtr_qc + <f_alv>-dmbtr_bqs - <f_alv>-dmbtr_bqh.
+*    期末方向
+    PERFORM frm_fx USING <f_alv>-dmbtr_qm CHANGING <f_alv>-fx_qm.
+*   处理期末借方和期末贷方
+    IF <f_alv>-dmbtr_qm > 0.
+      <f_alv>-dmbtr_qms = <f_alv>-dmbtr_qm.
+    ELSE.
+      <f_alv>-dmbtr_qmh = <f_alv>-dmbtr_qm.
+    ENDIF.
+*    <f_alv>-wrbtr_qc = abs( <f_alv>-wrbtr_qc ).
+*    <f_alv>-dmbtr_qc = abs( <f_alv>-dmbtr_qc ).
+**    <f_alv>-wrbtr_bqs = abs( <f_alv>-wrbtr_bqs ).
+**    <f_alv>-dmbtr_bqs = abs( <f_alv>-dmbtr_bqs ).
+*    <f_alv>-wrbtr_bqh = abs( <f_alv>-wrbtr_bqh ).
+*    <f_alv>-dmbtr_bqh = abs( <f_alv>-dmbtr_bqh ).
+*    <f_alv>-wrbtr_qm = abs( <f_alv>-wrbtr_qm ).
+*    <f_alv>-dmbtr_qm = abs( <f_alv>-dmbtr_qm ).
+*    <f_alv>-dmbtr_qms = abs( <f_alv>-dmbtr_qms ).
+*    <f_alv>-dmbtr_qmh = abs( <f_alv>-dmbtr_qmh ).
+*   取科目名称
+    READ TABLE gt_skat WITH KEY saknr = <f_alv>-racct BINARY SEARCH.
+    IF sy-subrc = 0.
+      <f_alv>-txt50 = gt_skat-txt50.
+    ENDIF.
+*   取币别描述
+    READ TABLE gt_tcurt WITH KEY waers = <f_alv>-rtcur BINARY SEARCH.
+    IF sy-subrc = 0.
+      <f_alv>-ktext = gt_tcurt-ktext.
+    ENDIF.
+  ENDLOOP.
+  SORT gt_alv BY rbukrs ryear racct.
+*** ADD BY XL 20161031 如果一个科目有多个币种，在该科目后增加一行将所有币种的本币累加
+  LOOP AT gt_alv.
+    CLEAR: lv_flag.
+    READ TABLE gt_ztfi004 WITH KEY saknr = gt_alv-racct BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_flag = 'X'.
+    ENDIF.
+    MOVE-CORRESPONDING gt_alv TO gt_alv_col.
+    IF lv_flag NE 'X'.
+      gt_alv_col-rtcur = 'CNY'.
+      gt_alv_col-ktext = '人民币'.
+    ENDIF.
+
+    APPEND gt_alv_col.
+    lv_xlh = lv_xlh + 1.
+    AT END OF txt50.
+      IF lv_xlh NE 1.
+        SUM.
+        MOVE-CORRESPONDING gt_alv TO gt_alv_col.
+        gt_alv_col-zkjqj = lv_zkjqj.
+        gt_alv_col-flag = 'X'.
+        CLEAR:gt_alv_col-rtcur,gt_alv_col-ktext,gt_alv_col-fx_qc,gt_alv_col-wrbtr_qc,gt_alv_col-wrbtr_bqs,
+        gt_alv_col-wrbtr_bqh,gt_alv_col-fx_qm,gt_alv_col-wrbtr_qm.
+        IF lv_flag NE 'X'.
+          gt_alv_col-rtcur = 'CNY'.
+          gt_alv_col-ktext = '人民币'.
+        ELSE.
+          gt_alv_col-rowcolor = 'C300'.
+        ENDIF.
+*    期初方向
+        PERFORM frm_fx USING gt_alv_col-dmbtr_qc CHANGING gt_alv_col-fx_qc.
+*    期末方向
+        PERFORM frm_fx USING gt_alv_col-dmbtr_qm CHANGING gt_alv_col-fx_qm.
+        IF gt_alv_col-fx_qm = '借'.
+          gt_alv_col-dmbtr_qms = gt_alv_col-dmbtr_qm.
+          CLEAR gt_alv_col-dmbtr_qmh.
+        ELSEIF gt_alv_col-fx_qm = '贷'.
+          gt_alv_col-dmbtr_qmh = gt_alv_col-dmbtr_qm.
+          CLEAR gt_alv_col-dmbtr_qms.
+        ENDIF.
+
+        APPEND gt_alv_col.
+        IF lv_flag IS INITIAL.
+          DELETE gt_alv_col WHERE rbukrs = gt_alv-rbukrs AND ryear = gt_alv-ryear AND racct = gt_alv-racct
+                              AND flag IS INITIAL.
+        ENDIF.
+      ENDIF.
+
+      CLEAR: lv_xlh.
+    ENDAT.
+  ENDLOOP.
+  LOOP AT gt_alv_col WHERE rtcur = 'CNY'.
+    CLEAR: gt_alv_col-wrbtr_qc,gt_alv_col-wrbtr_bqs,gt_alv_col-wrbtr_bqh,gt_alv_col-wrbtr_qm.
+    MODIFY gt_alv_col.
+    CLEAR:gt_alv_col.
+  ENDLOOP.
+  REFRESH: gt_alv.
+  gt_alv[] = gt_alv_col[].
+*** END BY XL 20161031
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_fieldcat .
+  REFRESH:g_it_fieldcat.
+  PERFORM sub_set_fieldcat USING 'X' 'RBUKRS'       '公司代码'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'RYEAR'        '会计年度'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'ZKJQJ'        '会计期间'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'RACCT'        '科目编码'        ''   ''  ''  ''  ''  'SAKNR'  'SKAT' ''.
+  PERFORM sub_set_fieldcat USING ''  'TXT50'        '科目名称'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'RTCUR'        '币别'            ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KTEXT'        '币别描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'FX_QC'        '期初方向'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_QC'     '期初原币'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QC'     '期初金额'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_BQS'    '本期借方原币'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_BQS'    '本期借方金额'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_BQH'    '本期贷方原币'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_BQH'    '本期贷方金额'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'FX_QM'        '期末方向'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_QM'     '期末原币'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QM'     '期末金额'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QMS'    '期末借方'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QMH'    '期末贷方'        'X'   ''  ''  ''  ''  ''  '' ''.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  alv_user_command
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM alv_user_command USING ucomm LIKE sy-ucomm
+      selfield TYPE slis_selfield.
+  DATA: lv_mitkz LIKE skb1-mitkz,
+        lv_fipex LIKE fmcit-fipex,
+        lv_flag  TYPE c,
+        wa_alv2  LIKE LINE OF gt_alv2.
+  FIELD-SYMBOLS: <f_alv2> LIKE LINE OF gt_alv2.
+  DATA: gt_cskt     LIKE cskt OCCURS 0 WITH HEADER LINE,
+*        gt_zfit0003 LIKE zfit0003 OCCURS 0 WITH HEADER LINE,
+*        gt_zfit0006 LIKE zfit0006 OCCURS 0 WITH HEADER LINE,
+*        gt_zfit0005 LIKE zfit0005 OCCURS 0 WITH HEADER LINE,
+*        gt_zfit0002 LIKE zfit0002 OCCURS 0 WITH HEADER LINE,
+        gt_t880     LIKE t880 OCCURS 0 WITH HEADER LINE,
+        gt_fmfctrt  LIKE fmfctrt OCCURS 0 WITH HEADER LINE,
+        gt_fmcit    LIKE fmcit OCCURS 0 WITH HEADER LINE.
+
+  CASE ucomm.
+    WHEN '&IC1'.
+      REFRESH: gt_bkpf,gt_bseg,gt_alv2,gt_alv3.
+      READ TABLE gt_alv INDEX selfield-tabindex."读取当前行
+      CLEAR: lv_mitkz,lv_fipex.
+*     根据公司代码、年度和会计科目从表BSEG中取出明细，然后从表SKB1中取出该科目是否为统驭科目，
+*    如果是统驭科目按照客户或者供应商显示期初、本期借贷、期末，如果不是统驭型科目，直接显示明细
+      CLEAR: lv_flag.
+      READ TABLE gt_ztfi004 WITH KEY saknr = gt_alv-racct.
+      IF sy-subrc = 0.
+        lv_flag = 'X'.
+      ENDIF.
+      SELECT SINGLE mitkz INTO lv_mitkz FROM skb1 WHERE bukrs = gt_alv-rbukrs AND saknr = gt_alv-racct.
+      SELECT * INTO TABLE gt_bkpf FROM bkpf WHERE budat LE lv_date_high
+                                              AND bukrs = gt_alv-rbukrs.
+*     add by pft 20171103  如果查询2017年6月，那么明细数据就是2017年6月以前所有期间，包括2016年13-16
+*                          如果查询2017年之前的年度，那么明细数据要排除2016年13-16年
+      DELETE gt_bkpf WHERE gjahr = p_ryear AND monat GE 13.
+*     end by pft 20171103
+      SORT gt_bkpf BY bukrs belnr gjahr.
+      IF gt_bkpf[] IS NOT INITIAL.
+        SELECT bukrs belnr gjahr buzei bschl koart shkzg xnegp dmbtr wrbtr pswsl zuonr sgtxt hkont kunnr lifnr
+               kostl vbund fistl fipos prctr
+          INTO CORRESPONDING FIELDS OF TABLE gt_bseg
+          FROM bseg
+          FOR ALL ENTRIES IN gt_bkpf
+          WHERE bukrs = gt_bkpf-bukrs
+            AND belnr = gt_bkpf-belnr
+            AND gjahr = gt_bkpf-gjahr
+            AND hkont = gt_alv-racct.
+*            AND pswsl = gt_alv-rtcur.
+*    CHANGE BY XL 20161031 第一个ALV中增加按科目汇总，双击汇总行时也要进入明细，
+*    所以要判断双击的是汇总行还是各币种行，如果是币种行，把不等于该币种的明细删除
+        IF ( gt_alv-flag NE 'X' AND lv_flag EQ 'X') OR ( gt_alv-flag NE 'X' AND lv_flag EQ 'X' ).
+          DELETE gt_bseg WHERE pswsl NE gt_alv-rtcur.
+        ENDIF.
+*  END BY XL 20161031
+      ENDIF.
+      IF gt_bseg[] IS NOT INITIAL.
+        SELECT * INTO TABLE gt_cskt FROM cskt FOR ALL ENTRIES IN gt_bseg WHERE spras = sy-langu AND kokrs = sy-langu AND kostl = gt_bseg-kostl.
+*        SELECT * INTO TABLE gt_zfit0003 FROM zfit0003 FOR ALL ENTRIES IN gt_bseg WHERE bukrs = gt_bseg-bukrs AND zzlpi = gt_bseg-zzlpi.
+*        SELECT * INTO TABLE gt_zfit0006 FROM zfit0006 FOR ALL ENTRIES IN gt_bseg WHERE bukrs = gt_bseg-bukrs AND zzsl = gt_bseg-zzsl.
+*        SELECT * INTO TABLE gt_zfit0005 FROM zfit0005 FOR ALL ENTRIES IN gt_bseg WHERE bukrs = gt_bseg-bukrs AND zzini = gt_bseg-zzini.
+*        SELECT * INTO TABLE gt_zfit0002 FROM zfit0002 FOR ALL ENTRIES IN gt_bseg WHERE zzac = gt_bseg-zzac.
+        SELECT * INTO TABLE gt_t880 FROM t880 FOR ALL ENTRIES IN gt_bseg WHERE rcomp = gt_bseg-vbund.
+        SELECT * INTO TABLE gt_fmfctrt FROM fmfctrt FOR ALL ENTRIES IN gt_bseg WHERE spras = sy-langu AND fikrs = '1000' AND fictr = gt_bseg-fistl.
+        SELECT * INTO TABLE gt_fmcit FROM fmcit WHERE spras = sy-langu AND fikrs = '1000'.
+        SORT gt_cskt BY kostl .
+*        SORT gt_zfit0003 BY zzlpi.
+*        SORT gt_zfit0006 BY zzsl.
+*        SORT gt_zfit0005 BY zzini.
+*        SORT gt_zfit0002 BY zzac.
+        SORT gt_t880 BY rcomp.
+        SORT gt_fmfctrt BY fictr.
+      ENDIF.
+*处理明细行，如果是统驭科目，计算每个客户或者供应商的期初、本期、期末
+      LOOP AT gt_bseg.
+        CLEAR: gt_bkpf,gt_kna1,gt_lfa1,gt_alv2.
+        READ TABLE gt_bkpf WITH KEY bukrs = gt_bseg-bukrs belnr = gt_bseg-belnr gjahr = gt_bseg-gjahr BINARY SEARCH.
+        gt_bseg-budat = gt_bkpf-budat.
+        CASE gt_bseg-koart.
+          WHEN 'D'."客户
+            READ TABLE gt_kna1 WITH KEY kunnr = gt_bseg-kunnr BINARY SEARCH.
+            gt_bseg-name1 = gt_kna1-name1.
+          WHEN 'K'. "供应商
+            READ TABLE gt_lfa1 WITH KEY lifnr = gt_bseg-lifnr BINARY SEARCH.
+            gt_bseg-name1 = gt_lfa1-name1.
+            gt_bseg-kunnr = gt_lfa1-lifnr.
+          WHEN OTHERS.
+        ENDCASE.
+        IF gt_bseg-xnegp = 'X'. "反记帐标识，S变H，H变S，金额全变负
+          gt_bseg-wrbtr = 0 - gt_bseg-wrbtr.
+          gt_bseg-dmbtr = 0 - gt_bseg-dmbtr.
+          CASE gt_bseg-shkzg.
+            WHEN 'H'.
+              gt_bseg-shkzg = 'S'.
+            WHEN 'S'.
+              gt_bseg-shkzg = 'H'.
+            WHEN OTHERS.
+          ENDCASE.
+*        ELSE.
+*          IF gt_bseg-shkzg = 'H'.
+*            gt_bseg-wrbtr = 0 - gt_bseg-wrbtr.
+*            gt_bseg-dmbtr = 0 - gt_bseg-dmbtr.
+*          ENDIF.
+        ENDIF.
+        gt_bseg-txt50 = gt_alv-txt50.
+        gt_bseg-ktext = gt_alv-ktext.
+*     BEGIN 如果是统驭科目，计算每个客户或者供应商的期初、本期、期末
+        IF lv_mitkz EQ 'K' OR lv_mitkz EQ 'D'.
+          PERFORM frm_process_tykm USING gt_bseg CHANGING gt_alv2.
+        ENDIF.
+*     END
+*    取描述
+        CLEAR: gt_cskt,gt_t880,gt_fmfctrt,gt_fmcit.
+        READ TABLE gt_cskt WITH KEY kostl = gt_bseg-kostl BINARY SEARCH.
+        gt_bseg-ktext = gt_cskt-ktext.
+*        READ TABLE gt_zfit0003 WITH KEY zzlpi = gt_bseg-zzlpi BINARY SEARCH.
+*        gt_bseg-zlpit = gt_zfit0003-zlpit.
+*        READ TABLE gt_zfit0006 WITH KEY zzsl = gt_bseg-zzsl BINARY SEARCH.
+*        gt_bseg-zzslt = gt_zfit0006-zzslt.
+*        READ TABLE gt_zfit0005 WITH KEY zzini = gt_bseg-zzini BINARY SEARCH.
+*        gt_bseg-zinit = gt_zfit0005-zinit.
+*        READ TABLE gt_zfit0002 WITH KEY zzac = gt_bseg-zzac BINARY SEARCH.
+*        gt_bseg-zzact = gt_zfit0002-zzact.
+        READ TABLE gt_t880 WITH KEY rcomp = gt_bseg-vbund BINARY SEARCH .
+        gt_bseg-name2 = gt_t880-name1.
+        READ TABLE gt_fmfctrt WITH KEY fictr = gt_bseg-fistl BINARY SEARCH .
+        gt_bseg-bezeich = gt_fmfctrt-bezeich.
+        CLEAR:lv_fipex.
+        CALL FUNCTION 'CONVERSION_EXIT_FMCIS_INPUT'
+          EXPORTING
+            input  = gt_bseg-fipos
+          IMPORTING
+            output = lv_fipex.
+        READ TABLE gt_fmcit WITH KEY fipex = lv_fipex.
+        gt_bseg-text1 = gt_fmcit-text1.
+        MODIFY gt_bseg TRANSPORTING budat name1 kunnr txt50 ktext ktext  name2 bezeich text1.
+        CLEAR: gt_bseg,gt_alv2.
+      ENDLOOP.
+
+*  根据科目类型，统驭科目显示内表GT_ALV2,其他科目显示内表GT_ALV3.
+      CASE lv_mitkz.
+        WHEN 'K' OR 'D'.
+          CLEAR: wa_alv2.
+          LOOP AT gt_alv2 ASSIGNING <f_alv2>.
+*    期初方向
+            PERFORM frm_fx USING <f_alv2>-dmbtr_qc CHANGING <f_alv2>-fx_qc.
+*   计算期末
+            <f_alv2>-wrbtr_qm = <f_alv2>-wrbtr_qc + <f_alv2>-wrbtr_bqs - <f_alv2>-wrbtr_bqh.
+            <f_alv2>-dmbtr_qm = <f_alv2>-dmbtr_qc + <f_alv2>-dmbtr_bqs - <f_alv2>-dmbtr_bqh.
+*    期末方向
+            PERFORM frm_fx USING <f_alv2>-dmbtr_qm CHANGING <f_alv2>-fx_qm.
+*   处理期末借方和期末贷方
+            IF <f_alv2>-dmbtr_qm > 0.
+              <f_alv2>-dmbtr_qms = <f_alv2>-dmbtr_qm.
+            ELSE.
+              <f_alv2>-dmbtr_qmh = <f_alv2>-dmbtr_qm.
+            ENDIF.
+            wa_alv2-bukrs = <f_alv2>-bukrs.
+            wa_alv2-hkont = <f_alv2>-hkont.
+
+            wa_alv2-dmbtr_qc = wa_alv2-dmbtr_qc + <f_alv2>-dmbtr_qc.
+            wa_alv2-dmbtr_bqs = wa_alv2-dmbtr_bqs + <f_alv2>-dmbtr_bqs.
+            wa_alv2-dmbtr_bqh = wa_alv2-dmbtr_bqh + <f_alv2>-dmbtr_bqh.
+            wa_alv2-dmbtr_qm = wa_alv2-dmbtr_qm + <f_alv2>-dmbtr_qm.
+            wa_alv2-rowcolor = 'C310'.
+          ENDLOOP.
+          PERFORM frm_fx USING wa_alv2-dmbtr_qc CHANGING wa_alv2-fx_qc.
+          PERFORM frm_fx USING wa_alv2-dmbtr_qm CHANGING wa_alv2-fx_qm.
+          APPEND wa_alv2 TO gt_alv2.
+          LOOP AT gt_alv2 WHERE pswsl = 'CNY'.
+            CLEAR: gt_alv2-wrbtr_qc,gt_alv2-wrbtr_bqs,gt_alv2-wrbtr_bqh,gt_alv2-wrbtr_qm.
+            MODIFY gt_alv2.
+            CLEAR:gt_alv2.
+          ENDLOOP.
+          PERFORM sub_build_fieldcat1.
+          PERFORM sub_build_layout.
+          PERFORM sub_display_alv TABLES gt_alv2 USING 'ALV_USER_COMMAND1' ''.
+        WHEN OTHERS.
+          REFRESH: gt_alv3.
+          IF  gt_alv-flag IS INITIAL.
+            LOOP AT gt_bseg WHERE bukrs = gt_alv-rbukrs AND hkont = gt_alv-racct ."AND pswsl = gt_alv-rtcur.
+              CLEAR: gt_alv3.
+              PERFORM frm_get_alv3  USING gt_bseg selfield-fieldname CHANGING gt_alv3 .
+            ENDLOOP.
+          ELSE.
+            LOOP AT gt_bseg WHERE bukrs = gt_alv-rbukrs AND hkont = gt_alv-racct.
+              CLEAR: gt_alv3.
+              PERFORM frm_get_alv3  USING gt_bseg selfield-fieldname CHANGING gt_alv3 .
+            ENDLOOP.
+          ENDIF.
+          PERFORM sub_build_fieldcat2.
+          PERFORM sub_build_layout.
+          PERFORM sub_display_alv TABLES gt_alv3 USING 'ALV_USER_COMMAND2' ''.
+      ENDCASE.
+
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM. "alv_user_command
+*&---------------------------------------------------------------------*
+*&      Form  PROCESS_BQ
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_<F>  text
+*      <--P_GT_ALV  text
+*----------------------------------------------------------------------*
+FORM process_bq  USING  p_drcrk  p_value p_value2
+                 CHANGING pt_alv STRUCTURE gt_alv.
+  IF p_drcrk = 'S'.
+    ADD  p_value  TO  pt_alv-wrbtr_bqs. "本期借
+    ADD  p_value2  TO  pt_alv-dmbtr_bqs. "本期借
+  ELSEIF p_drcrk = 'H'.
+    p_value = 0 - p_value.
+    p_value2 = 0 - p_value2.
+    ADD  p_value TO  pt_alv-wrbtr_bqh. "本期贷
+    ADD  p_value2 TO  pt_alv-dmbtr_bqh. "本期贷
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_FX
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_<F_ALV>_WRBTR_QC  text
+*      <--P_<F_ALV>_FX_QC  text
+*----------------------------------------------------------------------*
+FORM frm_fx  USING    p_wrbtr
+             CHANGING p_fx.
+  IF p_wrbtr > 0.
+    p_fx = '借'.
+  ELSEIF p_wrbtr < 0.
+    p_fx = '贷'.
+  ELSEIF p_wrbtr = 0.
+    p_fx = '平'.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_CHECK
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM frm_check .
+  DATA:lt_t001  LIKE  STANDARD TABLE OF t001.
+  FIELD-SYMBOLS:<fs_t001> LIKE t001.
+  SELECT * INTO CORRESPONDING FIELDS OF TABLE lt_t001 FROM t001 WHERE bukrs IN s_rbukrs.
+  LOOP AT   lt_t001 ASSIGNING <fs_t001>.
+    AUTHORITY-CHECK OBJECT 'F_BKPF_BUK'
+    ID 'BUKRS' FIELD <fs_t001>-bukrs.
+    IF sy-subrc <> 0.
+      MESSAGE |对于公司{ <fs_t001>-bukrs }，您没有查看的权限，请重新输入！| TYPE  'S' DISPLAY LIKE 'E'  .
+      STOP.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_PROCESS_TYKM
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_GT_BSEG  text
+*      <--P_GT_ALV2  text
+*----------------------------------------------------------------------*
+FORM frm_process_tykm  USING    pt_bseg STRUCTURE gt_bseg
+                       CHANGING pt_alv2 STRUCTURE gt_alv2.
+  DATA: lv_dmbtr LIKE bseg-dmbtr,
+        lv_wrbtr LIKE bseg-wrbtr.
+  MOVE-CORRESPONDING pt_bseg TO pt_alv2.
+  pt_alv2-gjahr = p_ryear.
+*  期初用LV_DMBTR 和LV_WRBTR
+  lv_dmbtr = pt_bseg-dmbtr.
+  lv_wrbtr = pt_bseg-wrbtr.
+  IF pt_bseg-shkzg = 'H'.
+    lv_dmbtr = 0 - lv_dmbtr.
+    lv_wrbtr = 0 - lv_wrbtr.
+  ENDIF.
+*  记算期初和本期以及期末
+  IF pt_bseg-budat < lv_date_low.
+    pt_alv2-wrbtr_qc = lv_wrbtr.
+    pt_alv2-dmbtr_qc = lv_dmbtr.
+  ELSEIF pt_bseg-budat BETWEEN lv_date_low AND lv_date_high.
+    IF pt_bseg-shkzg = 'S'.
+      pt_alv2-wrbtr_bqs = pt_bseg-wrbtr.
+      pt_alv2-dmbtr_bqs = pt_bseg-dmbtr.
+    ELSE.
+      pt_alv2-wrbtr_bqh = pt_bseg-wrbtr.
+      pt_alv2-dmbtr_bqh = pt_bseg-dmbtr.
+    ENDIF.
+  ENDIF.
+  COLLECT gt_alv2.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_FIELDCAT1
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_fieldcat1 .
+  REFRESH:g_it_fieldcat.
+  PERFORM sub_set_fieldcat USING 'X' 'BUKRS'       '公司代码'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'GJAHR'        '会计年度'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'HKONT'        '科目编码'        ''   ''  ''  ''  ''  'SAKNR'  'SKAT' ''.
+  PERFORM sub_set_fieldcat USING ''  'TXT50'        '科目名称'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'PRCTR'        '利润中心'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KUNNR'        '客户(供应商)'        'X'   ''  ''  ''  ''  'KUNNR'  'KNA1' ''.
+  PERFORM sub_set_fieldcat USING ''  'NAME1'        '客户(供应商)名称'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'PSWSL'        '币别'            ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KTEXT'        '币别描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'FX_QC'        '期初方向'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_QC'     '期初原币'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QC'     '期初金额'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_BQS'    '本期借方原币'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_BQS'    '本期借方金额'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_BQH'    '本期贷方原币'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_BQH'    '本期贷方金额'    'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'FX_QM'        '期末方向'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR_QM'     '期末原币'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QM'     '期末金额'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QMS'    '期末借方'        'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR_QMH'    '期末贷方'        'X'   ''  ''  ''  ''  ''  '' ''.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUB_BUILD_FIELDCAT2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM sub_build_fieldcat2 .
+  REFRESH:g_it_fieldcat.
+  PERFORM sub_set_fieldcat USING 'X' 'BUKRS'   '公司代码'          'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'BELNR'   '会计凭证号'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'GJAHR'   '会计年度'          ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING 'X' 'BUZEI'   '行项目'            ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'BUDAT'   '过帐日期'          ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'BSCHL'   '记账码'            ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'SHKZG'   '借贷标识'          ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'XNEGP'   '反记帐标识'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'HKONT'   '科目编码'          ''   ''  ''  ''  ''  'SAKNR'  'SKAT' ''.
+  PERFORM sub_set_fieldcat USING ''  'TXT50'   '科目名称'          ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'PRCTR'   '利润中心'          ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KUNNR'   '客户(供应商)'      ''   ''  ''  ''  ''  'KUNNR'  'KNA1' ''.
+  PERFORM sub_set_fieldcat USING ''  'NAME1'   '客户(供应商)名称'  ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'PSWSL'   '币别'              ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KTEXT'   '币别描述'          ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'DMBTR'   '本币金额'          'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'WRBTR'   '外币金额'          'X'   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZUONR'   '分配'              ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'SGTXT'   '行项目文本'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KOSTL'   '成本中心'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'KTEXT'   '成本中心描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZZLPI'   '贷款项目'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZLPIT'   '贷款项目描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZZSL'   '库位'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZZSLT'   '库位描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZZINI'   '投资收益项目'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZINIT'   '投资收益项目描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZZAC'   '关联公司'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'ZZACT'   '关联公司描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'VBUND'   '贸易伙伴'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'NAME2'   '贸易伙伴描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'FISTL'   '基金中心'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'BEZEICH'   '基金中心描述'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'FIPOS'   '承诺项目'        ''   ''  ''  ''  ''  ''  '' ''.
+  PERFORM sub_set_fieldcat USING ''  'TEXT1'   '承诺项目描述'        ''   ''  ''  ''  ''  ''  '' ''.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  alv_user_command
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM alv_user_command1 USING ucomm LIKE sy-ucomm
+      selfield TYPE slis_selfield.
+  CASE ucomm.
+    WHEN '&IC1'.
+      REFRESH: gt_alv3.
+      READ TABLE gt_alv2 INDEX selfield-tabindex."读取当前行
+      IF gt_alv2-rowcolor IS INITIAL.
+        LOOP AT gt_bseg WHERE bukrs = gt_alv2-bukrs AND hkont = gt_alv2-hkont AND pswsl = gt_alv2-pswsl AND kunnr = gt_alv2-kunnr.
+          CLEAR: gt_alv3.
+          PERFORM frm_get_alv3  USING gt_bseg selfield-fieldname CHANGING gt_alv3 .
+        ENDLOOP.
+      ELSE.
+        LOOP AT gt_bseg WHERE bukrs = gt_alv2-bukrs AND hkont = gt_alv2-hkont .
+          CLEAR: gt_alv3.
+          PERFORM frm_get_alv3  USING gt_bseg selfield-fieldname CHANGING gt_alv3 .
+        ENDLOOP.
+      ENDIF.
+      PERFORM sub_build_fieldcat2.
+      PERFORM sub_display_alv TABLES gt_alv3 USING 'ALV_USER_COMMAND2' ''.
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM. "alv_user_command
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_ALV3
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_GT_BSEG  text
+*      -->P_GT_ALV2  text
+*      -->P_SELFIELD_FIELDNAME  text
+*      <--P_GT_ALV3  text
+*----------------------------------------------------------------------*
+FORM frm_get_alv3  USING pt_bseg STRUCTURE gt_bseg
+                          p_fieldname
+                   CHANGING pt_alv3 STRUCTURE gt_alv3.
+  IF pt_bseg-shkzg EQ 'H'.
+    pt_bseg-wrbtr = 0 - pt_bseg-wrbtr.
+    pt_bseg-dmbtr = 0 - pt_bseg-dmbtr.
+  ENDIF.
+  CASE p_fieldname.
+    WHEN 'WRBTR_QC' OR 'DMBTR_QC'.
+      IF pt_bseg-budat < lv_date_low.
+        MOVE-CORRESPONDING pt_bseg TO pt_alv3.
+        COLLECT gt_alv3.
+      ENDIF.
+    WHEN 'WRBTR_BQS' OR 'DMBTR_BQS'.
+      IF pt_bseg-budat BETWEEN lv_date_low AND lv_date_high.
+        IF pt_bseg-xnegp NE 'X' AND pt_bseg-shkzg EQ 'S'.
+          MOVE-CORRESPONDING pt_bseg TO pt_alv3.
+          COLLECT gt_alv3.
+        ELSEIF pt_bseg-xnegp EQ 'X' AND pt_bseg-shkzg EQ 'H'.
+          MOVE-CORRESPONDING pt_bseg TO pt_alv3.
+          COLLECT gt_alv3.
+        ENDIF.
+      ENDIF.
+    WHEN 'WRBTR_BQH' OR 'DMBTR_BQH'.
+      IF pt_bseg-budat BETWEEN lv_date_low AND lv_date_high.
+        IF pt_bseg-xnegp NE 'X' AND pt_bseg-shkzg EQ 'H'.
+          MOVE-CORRESPONDING pt_bseg TO pt_alv3.
+          COLLECT gt_alv3.
+        ELSEIF pt_bseg-xnegp EQ 'X' AND pt_bseg-shkzg EQ 'S'.
+          MOVE-CORRESPONDING pt_bseg TO pt_alv3.
+          COLLECT gt_alv3.
+        ENDIF.
+      ENDIF.
+    WHEN 'WRBTR_QM' OR 'DMBTR_QM' OR 'DMBTR_QMS' OR 'DMBTR_QMH' .
+      MOVE-CORRESPONDING pt_bseg TO pt_alv3.
+      COLLECT gt_alv3.
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  alv_user_command
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM alv_user_command2 USING ucomm LIKE sy-ucomm
+      selfield TYPE slis_selfield.
+  CASE ucomm.
+    WHEN '&IC1'.
+      READ TABLE gt_alv3 INDEX selfield-tabindex."读取当前行
+      IF selfield-fieldname = 'BELNR'.
+        SET PARAMETER ID : 'BLN' FIELD gt_alv3-belnr,
+                           'GJR' FIELD gt_alv3-gjahr,
+                           'BUK' FIELD gt_alv3-bukrs.
+        CALL TRANSACTION  'FB03' AND SKIP FIRST SCREEN.
+      ENDIF.
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM. "alv_user_command

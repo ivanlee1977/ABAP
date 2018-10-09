@@ -1,0 +1,14 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZRPCO007T01
+*&---------------------------------------------------------------------*
+
+TABLES:ce11000,sscrfields.
+
+DATA:BEGIN OF gt_out OCCURS 0,
+       zsort(2) TYPE n,
+       zarea LIKE ztco007-zarea,  "区域
+       zyysr(15) TYPE p DECIMALS 2,   "营业收入
+       zyycb(15) TYPE p DECIMALS 2,   "营业成本
+     END OF gt_out.
+
+CONSTANTS:gcst_excel_template TYPE w3objid VALUE 'ZCO007'.
