@@ -1,0 +1,238 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZALV
+*&  注意：
+*& 该INCLUDE程序请勿随便更改，修改一个会影响很多程序如确实需要可以新增PERFORM例程
+*&---------------------------------------------------------------------*
+"程序用到的TYPE
+TYPE-POOLS: vrm,truxs,abap,slis,shlp.
+
+"ALV用到的类型定义
+DATA: g_it_fieldcat  TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      g_it_sort      TYPE slis_t_sortinfo_alv WITH HEADER LINE,
+      g_gs_events    TYPE slis_t_event,
+      g_gs_print     TYPE slis_print_alv,
+      g_gs_layout    TYPE slis_layout_alv,
+      lr_grid        TYPE REF TO cl_gui_alv_grid,
+
+      g_it_fieldcat1 TYPE lvc_t_fcat WITH HEADER LINE,
+      g_it_sort1     TYPE lvc_t_sort WITH HEADER LINE,
+      g_it_events    TYPE slis_t_event WITH HEADER LINE,
+      g_gs_print1    TYPE lvc_s_prnt,
+      g_gs_layout1   TYPE lvc_s_layo,
+      ls_edit        TYPE lvc_s_styl,
+      lt_edit        TYPE lvc_s_styl.
+
+DATA: g_it_fieldcat_d TYPE slis_t_fieldcat_alv WITH HEADER LINE,
+      g_it_sort_d     TYPE slis_t_sortinfo_alv WITH HEADER LINE.
+
+DATA: ref TYPE REF TO cl_gui_alv_grid.
+
+FORM sub_check_changed_data.
+  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+    IMPORTING
+      e_grid = ref.
+  CALL METHOD ref->check_changed_data.
+ENDFORM.
+
+FORM sub_refresh_data.
+  DATA:ls_stbl TYPE lvc_s_stbl.
+* 稳定刷新
+  ls_stbl-row = 'X'." 基于行的稳定刷新
+  ls_stbl-col = 'X'." 基于列稳定刷新
+  CALL METHOD ref->refresh_table_display
+    EXPORTING
+      is_stable = ls_stbl.
+ENDFORM.
+
+FORM sub_show_data TABLES p_tab USING p_user_command p_status_name.
+  PERFORM sub_build_layout."设置ALV样式
+  PERFORM sub_display_alv TABLES p_tab USING p_user_command p_status_name.  "显示ALV报表
+ENDFORM.
+
+FORM sub_build_layout .
+  g_gs_layout-zebra                = 'X'.
+  g_gs_layout-no_vline             = ''.
+  g_gs_layout-colwidth_optimize    = 'X'.
+  g_gs_layout-detail_popup         = 'X'.
+  g_gs_layout-detail_initial_lines = 'X'.
+  g_gs_layout-detail_titlebar      = sy-tcode.
+  g_gs_layout-confirmation_prompt  = ''.
+  g_gs_layout-box_fieldname = 'BOX'.
+  g_gs_layout-info_fieldname    = 'ROWCOLOR'.
+ENDFORM.
+
+FORM sub_build_layout1 .
+  g_gs_layout1-zebra                = 'X'.
+  g_gs_layout1-cwidth_opt           = 'X'.
+  g_gs_layout1-stylefname           = 'STYLE'.
+ENDFORM.
+
+FORM sub_set_fieldcat USING p_key p_field p_text p_zero p_dosum p_bgcolor p_edit p_outlen p_reffield p_reftable p_mask.
+  CLEAR g_it_fieldcat.
+  g_it_fieldcat-key = p_key.
+  g_it_fieldcat-fieldname = p_field.
+  g_it_fieldcat-reptext_ddic = p_text.
+  g_it_fieldcat-no_zero = p_zero.
+  g_it_fieldcat-checkbox = p_dosum.
+  g_it_fieldcat-emphasize = p_bgcolor.
+  g_it_fieldcat-edit = p_edit.
+  g_it_fieldcat-outputlen = p_outlen.
+  g_it_fieldcat-ref_fieldname = p_reffield.
+  g_it_fieldcat-ref_tabname = p_reftable.
+  g_it_fieldcat-lowercase = p_mask.
+  IF g_it_fieldcat-fieldname = 'ZICON'.
+    g_it_fieldcat-icon = 'X'.
+  ENDIF.
+  IF sy-tcode EQ 'ZPP018'.
+    IF p_field = 'SJTRL' OR p_field = 'SJRKL' OR p_field = 'FGRKS' OR p_field = 'ZZZSL'
+      OR p_field = 'ZKCSL' OR p_field = 'XSCHL' OR p_field = 'PSMNG' OR p_field = 'WEMNG'
+      OR p_field = 'MENGE' OR p_field = 'LABST' OR p_field = 'LFIMG' .
+      g_it_fieldcat-qfieldname = 'MEINS'.
+    ENDIF.
+  ENDIF.
+  IF sy-tcode EQ 'ZQM003'.
+    IF p_field = 'LOSMENGE'.
+      g_it_fieldcat-qfieldname = 'MENGENEINH'.
+    ENDIF.
+  ENDIF.
+  IF sy-tcode EQ 'ZSD018' OR sy-tcode EQ 'ZSD030'.
+    IF p_field = 'VBELN'.
+      g_it_fieldcat-hotspot = 'X'.
+    ENDIF.
+  ENDIF.
+  APPEND g_it_fieldcat.
+ENDFORM.
+
+FORM sub_set_fieldcat1 USING p_key p_field p_text p_zero p_dosum p_bgcolor p_edit p_outlen p_reffield p_reftable p_style p_f4 .
+  CLEAR g_it_fieldcat1.
+  g_it_fieldcat1-key = p_key.
+  g_it_fieldcat1-fieldname = p_field.
+  g_it_fieldcat1-coltext = p_text.
+  g_it_fieldcat1-no_zero = p_zero.
+  g_it_fieldcat1-checkbox = p_dosum.
+  g_it_fieldcat1-emphasize = p_bgcolor.
+  g_it_fieldcat1-edit = p_edit.
+  g_it_fieldcat1-outputlen = p_outlen.
+  g_it_fieldcat1-ref_field = p_reffield.
+  g_it_fieldcat1-ref_table = p_reftable.
+  g_it_fieldcat1-style = p_style.
+  g_it_fieldcat1-f4availabl = p_f4.
+  APPEND g_it_fieldcat1.
+ENDFORM.
+
+FORM sub_set_fieldcat2 USING p_key p_field p_text p_zero p_decimals p_bgcolor p_edit p_outlen p_reffield p_reftable p_mask.
+  CLEAR g_it_fieldcat.
+  g_it_fieldcat-key = p_key.
+  g_it_fieldcat-fieldname = p_field.
+  g_it_fieldcat-reptext_ddic = p_text.
+  g_it_fieldcat-no_zero = p_zero.
+  g_it_fieldcat-decimals_out = p_decimals.
+  g_it_fieldcat-emphasize = p_bgcolor.
+  g_it_fieldcat-edit = p_edit.
+  g_it_fieldcat-outputlen = p_outlen.
+  g_it_fieldcat-ref_fieldname = p_reffield.
+  g_it_fieldcat-ref_tabname = p_reftable.
+  g_it_fieldcat-lowercase = p_mask.
+  APPEND g_it_fieldcat.
+ENDFORM.
+
+FORM sub_set_soft USING p_spos p_field p_up p_down.
+  CLEAR: g_it_sort.
+  g_it_sort-spos = p_spos.
+  g_it_sort-fieldname = p_field.
+  g_it_sort-up = p_up.
+  g_it_sort-down = p_down.
+  APPEND g_it_sort.
+ENDFORM.
+
+FORM sub_set_soft1 USING p_spos p_field p_up p_down.
+  CLEAR: g_it_sort1.
+  g_it_sort1-spos = p_spos.
+  g_it_sort1-fieldname = p_field.
+  g_it_sort1-up = p_up.
+  g_it_sort1-down = p_down.
+  APPEND g_it_sort1.
+ENDFORM.
+
+FORM sub_display_alv TABLES p_tab USING p_user_command p_status_name .
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_user_command  = p_user_command
+      i_callback_pf_status_set = p_status_name
+      it_fieldcat              = g_it_fieldcat[]
+      i_save                   = 'A'
+      is_layout                = g_gs_layout
+      is_print                 = g_gs_print
+      it_sort                  = g_it_sort[]
+    TABLES
+      t_outtab                 = p_tab
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.
+
+FORM sub_display_alv1 TABLES p_tab USING p_user_command p_status_name .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_user_command  = p_user_command
+      i_callback_pf_status_set = p_status_name
+      it_fieldcat              = g_it_fieldcat[]
+      i_save                   = 'A'
+      is_layout                = g_gs_layout
+      is_print                 = g_gs_print
+      it_sort                  = g_it_sort[]
+      it_events                = g_it_events[]
+    TABLES
+      t_outtab                 = p_tab
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+ENDFORM.
+
+FORM sub_display_alv2 TABLES p_tab USING p_html_top p_user_command p_status_name .
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program          = sy-repid
+      i_callback_html_top_of_page = p_html_top
+      i_callback_user_command     = p_user_command
+      i_callback_pf_status_set    = p_status_name
+      it_fieldcat                 = g_it_fieldcat[]
+      i_save                      = 'A'
+      is_layout                   = g_gs_layout
+      is_print                    = g_gs_print
+      it_sort                     = g_it_sort[]
+      it_events                   = g_it_events[]
+    TABLES
+      t_outtab                    = p_tab
+    EXCEPTIONS
+      program_error               = 1
+      OTHERS                      = 2.
+ENDFORM.
+
+FORM sub_display_alv3 TABLES p_tab USING p_user_command p_status_name.
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_user_command  = p_user_command
+      i_callback_pf_status_set = p_status_name
+      it_fieldcat_lvc          = g_it_fieldcat1[]
+      i_save                   = 'A'
+      is_layout_lvc            = g_gs_layout1
+      is_print_lvc             = g_gs_print1
+      it_sort_lvc              = g_it_sort1[]
+      it_events                = g_it_events[]
+    TABLES
+      t_outtab                 = p_tab
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+ENDFORM.
